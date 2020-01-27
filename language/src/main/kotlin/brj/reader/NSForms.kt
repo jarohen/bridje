@@ -13,7 +13,7 @@ internal interface FormLoader {
 
 internal data class NSForms(val nsHeader: NSHeader, val forms: List<Form>)
 
-internal fun nsForms(ns: Symbol, loader: FormLoader): List<NSForms> {
+internal fun loadNSForms(nses: Set<Symbol>, loader: FormLoader): List<NSForms> {
     val stack = mutableSetOf<Symbol>()
 
     val res = mutableListOf<NSForms>()
@@ -37,7 +37,7 @@ internal fun nsForms(ns: Symbol, loader: FormLoader): List<NSForms> {
         stack -= ns
     }
 
-    nsForms(ns)
+    nses.forEach(::nsForms)
 
     return res
 }

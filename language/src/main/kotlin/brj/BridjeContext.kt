@@ -3,12 +3,11 @@ package brj
 import brj.emitter.TruffleEmitter
 import brj.reader.ClasspathLoader
 import brj.reader.FormLoader
-import brj.reader.nsForms
-import brj.runtime.NSEnv
+import brj.reader.NSForms
+import brj.reader.loadNSForms
 import brj.runtime.RuntimeEnv
 import brj.runtime.Symbol
-import com.oracle.truffle.api.CompilerDirectives
-import com.oracle.truffle.api.CompilerDirectives.*
+import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary
 import com.oracle.truffle.api.TruffleFile
 import com.oracle.truffle.api.TruffleLanguage
 
@@ -22,17 +21,21 @@ class BridjeContext internal constructor(internal val language: BridjeLanguage,
 
     internal val formLoader: FormLoader = ClasspathLoader(this)
 
-    @TruffleBoundary
-    internal fun require(ns: Symbol): NSEnv {
+    private fun require(nsFormses: List<NSForms>): RuntimeEnv {
         val evaluator = Evaluator(TruffleEmitter(this))
 
         synchronized(this) {
-            env = nsForms(ns, formLoader)
-                .fold(env) { env, forms ->
-                    evaluator.evalNS(env, forms)
-                }
+            env = nsFormses.fold(env, evaluator::evalNS)
         }
 
-        return env.nses.getValue(ns)
+        return env
     }
+
+    @TruffleBoundary
+    internal fun eval(nsForms: NSForms) =
+        require(loadNSForms(nsForms.nsHeader.deps, formLoader) + nsForms).nses.getValue(nsForms.nsHeader.ns)
+
+    @TruffleBoundary
+    internal fun require(ns: Symbol) =
+        require(loadNSForms(setOf(ns), formLoader)).nses.getValue(ns)
 }

@@ -10,6 +10,7 @@ import brj.analyser.Resolver
 import brj.analyser.ValueExprAnalyser
 import brj.emitter.ValueExprEmitter.DoNode
 import brj.reader.Form
+import brj.reader.NSForms
 import brj.runtime.BridjeFunction
 import brj.runtime.Symbol
 import brj.types.valueExprType
@@ -33,9 +34,14 @@ internal abstract class EvalValueNode(private val form: Form) : ValueNode() {
     }
 }
 
-internal abstract class EvalRequireNode(private val ns: Symbol): ValueNode() {
+internal abstract class EvalRequireNode(private val ns: Symbol) : ValueNode() {
     @Specialization
     fun doExecute(@CachedContext(BridjeLanguage::class) ctx: BridjeContext) = ctx.require(ns)
+}
+
+internal abstract class EvalNSNode(private val nsForms: NSForms) : ValueNode() {
+    @Specialization
+    fun doExecute(@CachedContext(BridjeLanguage::class) ctx: BridjeContext) = ctx.eval(nsForms)
 }
 
 internal object EvalEmitter {
@@ -44,7 +50,7 @@ internal object EvalEmitter {
             is EvalValueExpr -> EvalValueNodeGen.create(expr.form)
             is RequireExpr -> EvalRequireNodeGen.create(expr.ns)
             is AliasExpr -> TODO()
-            is NSExpr -> TODO()
+            is NSExpr -> EvalNSNodeGen.create(expr.nsForms)
         }
 
     fun emitEvalExprs(exprs: List<EvalExpr>) =
