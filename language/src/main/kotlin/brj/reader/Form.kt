@@ -14,35 +14,6 @@ internal val UNQUOTE_SPLICING = QSymbol(FORM_NS, "unquote-splicing")
 
 internal sealed class Form(formClass: Class<out Form>, arg: Any) : VariantObject(FORM_TYPES.getValue(formClass).variantKey, arrayOf(arg)) {
     var loc: Loc? = null
-    internal val stringRep: String by lazy {
-        when (this) {
-            is BooleanForm -> bool.toString()
-            is StringForm -> string.replace(Regex("""[\\"\n\t\r]""")) {
-                when (it.value.first()) {
-                    '\\' -> "\\\\"
-                    '\n' -> "\\\n"
-                    '\t' -> "\\\t"
-                    '\r' -> "\\\r"
-                    '\"' -> "\\\""
-                    else -> it.value
-                }
-            }
-            is IntForm -> int.toString()
-            is BigIntForm -> "${bigInt}N"
-            is FloatForm -> float.toString()
-            is BigFloatForm -> "${bigFloat}M"
-            is SymbolForm -> sym.toString()
-            is QSymbolForm -> sym.toString()
-            is ListForm -> forms.map(Form::stringRep).joinToString(prefix = "(", separator = " ", postfix = ")")
-            is VectorForm -> forms.map(Form::stringRep).joinToString(prefix = "[", separator = " ", postfix = "]")
-            is SetForm -> forms.map(Form::stringRep).joinToString(prefix = "#{", separator = " ", postfix = "}")
-            is RecordForm -> forms.map(Form::stringRep).joinToString(prefix = "{", separator = " ", postfix = "}")
-            is QuotedSymbolForm -> "'${sym}"
-            is QuotedQSymbolForm -> "'${sym}"
-            is SyntaxQuotedSymbolForm -> "`${sym}"
-            is SyntaxQuotedQSymbolForm -> "`${sym}"
-        }
-    }
 
     fun withLoc(loc: Loc?): Form {
         this.loc = loc

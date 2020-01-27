@@ -11,6 +11,54 @@ import brj.types.Type
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
+internal fun ValueExpr.stringRep(): String = when (this) {
+    is BooleanExpr -> boolean.toString()
+    is StringExpr -> "\"$string\""
+    is IntExpr -> int.toString()
+    is BigIntExpr -> "${bigInt}N"
+    is FloatExpr -> float.toString()
+    is BigFloatExpr -> "${bigFloat}M"
+    is QuotedSymbolExpr -> "'$sym"
+    is QuotedQSymbolExpr -> "'$sym"
+
+    is VectorExpr -> exprs.joinToString(prefix = "[", transform = ValueExpr::stringRep, separator = " ", postfix = "]")
+    is SetExpr -> exprs.joinToString(prefix = "#{", transform = ValueExpr::stringRep, separator = " ", postfix = "}")
+    is RecordExpr -> entries.joinToString(prefix = "{", transform = { "${it.recordKey.sym} ${it.expr.stringRep()}" }, separator = ", ", postfix = "}")
+
+    is CallExpr -> "(call ${this.f.stringRep()} ${effectLocal.sym} ${args.joinToString(separator = " ", transform = ValueExpr::stringRep)})"
+
+    is FnExpr -> "(fn ${fnName ?: "_"}" +
+        params.joinToString(prefix = "[", separator = " ", transform = { "${it.sym}" }, postfix = "]") + " " +
+        params.joinToString(prefix = "[", separator = " ", transform = { "${it.sym}" }, postfix = "]") + " " +
+        expr.stringRep() + ")"
+
+    is IfExpr -> "(if ${predExpr.stringRep()} ${thenExpr.stringRep()} ${elseExpr.stringRep()})"
+    is DoExpr -> "(do ${(exprs + expr).joinToString(separator = " ", transform = ValueExpr::stringRep)})"
+    is LetExpr -> "(let " +
+        bindings.joinToString(prefix = "[", separator = ", ", transform = { "${it.localVar.sym} ${it.expr.stringRep()}" }, postfix = "]") + " " +
+        expr.stringRep() + ")"
+
+    is LoopExpr -> "(loop " +
+        bindings.joinToString(prefix = "[", separator = ", ", transform = { "${it.localVar.sym} ${it.expr.stringRep()}" }, postfix = "]") + " " +
+        expr.stringRep() + ")"
+    is RecurExpr -> "(recur ${exprs.joinToString(prefix = "[", separator = ", ", transform = { "${it.first.sym} ${it.second.stringRep()}" }, postfix = "]")})"
+
+    is CaseExpr -> "(case ${expr.stringRep()} " +
+        clauses.joinToString(prefix = "[", separator = ", ", postfix = "]", transform = {
+            "(${it.variantKey.sym} ${it.bindings.joinToString(separator = " ", transform = {"${it.sym}"})}) ${it.bodyExpr.stringRep()}"
+        }) + " " +
+        defaultExpr?.stringRep() + ")"
+
+    is LocalVarExpr -> "(lv ${localVar.sym})"
+    is GlobalVarExpr -> "(gv ${globalVar.sym})"
+
+    is WithFxExpr -> "(with-fx " +
+        oldFxLocal.sym.toString() + " " +
+        newFxLocal.sym.toString() + " " +
+        fx.joinToString(prefix = "{", separator = ", ", postfix = "}", transform = { "${it.effectVar.sym} ${it.fnExpr.stringRep()}" }) + " " +
+        bodyExpr.stringRep() + ")"
+}
+
 internal class ValueExprAnalyserTest {
     val dummyVar = object : Any() {}
 
@@ -47,6 +95,8 @@ internal class ValueExprAnalyserTest {
         val expr = ValueExprAnalyser(Resolver.NSResolver(nsEnv = nsEnv))
             .analyseValueExpr(readForms("""(with-fx [(def (println! s) "Hello!")] (println! "foo!"))""").first())
 
+        println(expr.stringRep())
+
         val withFxExpr = (expr as DoExpr).expr as WithFxExpr
 
         assertEquals(1, withFxExpr.fx.size)
@@ -55,13 +105,11 @@ internal class ValueExprAnalyserTest {
         assertEquals(println, effect.effectVar.sym)
 
         assertEquals(
-            DoExpr(emptyList(), StringExpr("Hello!")),
-            effect.fnExpr.expr)
-
-        val effectLocal = LocalVar(Symbol(ID, "fx"))
+            """(do "Hello!")""",
+            effect.fnExpr.expr.stringRep())
 
         assertEquals(
-            DoExpr(emptyList(), CallExpr(GlobalVarExpr(effectVar, effectLocal), listOf(StringExpr("foo!")), effectLocal)),
-            withFxExpr.bodyExpr)
+            """(do (call (gv user/println!) _fx "foo!"))""",
+            withFxExpr.bodyExpr.stringRep())
     }
 }
