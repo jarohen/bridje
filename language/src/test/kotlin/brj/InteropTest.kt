@@ -1,8 +1,5 @@
 package brj
 
-import brj.BridjeLanguage.Companion.currentBridjeContext
-import brj.runtime.SymKind.ID
-import brj.runtime.Symbol
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 

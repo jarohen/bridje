@@ -13,9 +13,10 @@ import com.oracle.truffle.api.*
 import com.oracle.truffle.api.frame.FrameDescriptor
 import com.oracle.truffle.api.frame.VirtualFrame
 import com.oracle.truffle.api.nodes.RootNode
-import org.graalvm.options.*
-import org.graalvm.options.OptionCategory.*
-import org.graalvm.options.OptionStability.*
+import org.graalvm.options.OptionCategory.USER
+import org.graalvm.options.OptionDescriptors
+import org.graalvm.options.OptionKey
+import org.graalvm.options.OptionStability.STABLE
 
 @TruffleLanguage.Registration(
     id = "brj",
@@ -58,8 +59,5 @@ class BridjeLanguage : TruffleLanguage<BridjeContext>() {
             category = USER, stability = STABLE)
         @JvmField
         val STUFF_DIR = OptionKey<String>(".brj-stuff")
-
-        @Deprecated("only used in tests")
-        internal fun currentBridjeContext() = getCurrentContext(BridjeLanguage::class.java)
     }
 }
