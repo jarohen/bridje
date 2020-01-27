@@ -14,7 +14,7 @@ internal val UNQUOTE_SPLICING = QSymbol(FORM_NS, "unquote-splicing")
 
 internal sealed class Form(formClass: Class<out Form>, arg: Any) : VariantObject(FORM_TYPES.getValue(formClass).variantKey, arrayOf(arg)) {
     var loc: Loc? = null
-    internal val stringRep by lazy {
+    internal val stringRep: String by lazy {
         when (this) {
             is BooleanForm -> bool.toString()
             is StringForm -> string.replace(Regex("""[\\"\n\t\r]""")) {
@@ -33,10 +33,10 @@ internal sealed class Form(formClass: Class<out Form>, arg: Any) : VariantObject
             is BigFloatForm -> "${bigFloat}M"
             is SymbolForm -> sym.toString()
             is QSymbolForm -> sym.toString()
-            is ListForm -> forms.joinToString(prefix = "(", separator = " ", postfix = ")")
-            is VectorForm -> forms.joinToString(prefix = "[", separator = " ", postfix = "]")
-            is SetForm -> forms.joinToString(prefix = "#{", separator = " ", postfix = "}")
-            is RecordForm -> forms.joinToString(prefix = "{", separator = " ", postfix = "}")
+            is ListForm -> forms.map(Form::stringRep).joinToString(prefix = "(", separator = " ", postfix = ")")
+            is VectorForm -> forms.map(Form::stringRep).joinToString(prefix = "[", separator = " ", postfix = "]")
+            is SetForm -> forms.map(Form::stringRep).joinToString(prefix = "#{", separator = " ", postfix = "}")
+            is RecordForm -> forms.map(Form::stringRep).joinToString(prefix = "{", separator = " ", postfix = "}")
             is QuotedSymbolForm -> "'${sym}"
             is QuotedQSymbolForm -> "'${sym}"
             is SyntaxQuotedSymbolForm -> "`${sym}"
