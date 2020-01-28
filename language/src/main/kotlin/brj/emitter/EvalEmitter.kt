@@ -34,9 +34,9 @@ internal abstract class EvalValueNode(private val form: Form) : ValueNode() {
     }
 }
 
-internal abstract class EvalRequireNode(private val ns: Symbol) : ValueNode() {
+internal abstract class EvalRequireNode(private val nses: Set<Symbol>) : ValueNode() {
     @Specialization
-    fun doExecute(@CachedContext(BridjeLanguage::class) ctx: BridjeContext) = ctx.require(ns)
+    fun doExecute(@CachedContext(BridjeLanguage::class) ctx: BridjeContext) = ctx.require(nses)
 }
 
 internal abstract class EvalNSNode(private val nsForms: NSForms) : ValueNode() {
@@ -48,7 +48,7 @@ internal object EvalEmitter {
     fun emitEvalExpr(expr: EvalExpr): ValueNode =
         when (expr) {
             is EvalValueExpr -> EvalValueNodeGen.create(expr.form)
-            is RequireExpr -> EvalRequireNodeGen.create(expr.ns)
+            is RequireExpr -> EvalRequireNodeGen.create(expr.nses)
             is AliasExpr -> TODO()
             is NSExpr -> EvalNSNodeGen.create(expr.nsForms)
         }

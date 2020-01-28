@@ -36,6 +36,11 @@ class BridjeContext internal constructor(internal val language: BridjeLanguage,
         require(loadNSForms(nsForms.nsHeader.deps, formLoader) + nsForms).nses.getValue(nsForms.nsHeader.ns)
 
     @TruffleBoundary
-    internal fun require(ns: Symbol) =
-        require(loadNSForms(setOf(ns), formLoader)).nses.getValue(ns)
+    internal fun require(nses: Set<Symbol>) =
+        require(loadNSForms(nses, formLoader))
+
+
+    @TruffleBoundary
+    internal fun require(vararg nses: Symbol) =
+        require(loadNSForms(nses.toSet(), formLoader))
 }

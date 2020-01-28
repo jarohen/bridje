@@ -52,7 +52,7 @@ class BridjeLauncher : AbstractLanguageLauncher() {
 
 
                     is EvalMain -> {
-                        val nsEnv = ctx.eval("brj", "(require! ${script.ns})")
+                        val nsEnv = ctx.eval("brj", "(require! ${script.ns})").getMember(script.ns)
                         if (!nsEnv.canInvokeMember("main")) abort("Can't find 'main' function in ${script.ns}")
                         nsEnv.invokeMember("main", args)
                     }
