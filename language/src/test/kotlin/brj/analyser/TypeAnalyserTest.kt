@@ -31,6 +31,5 @@ internal class TypeAnalyserTest {
         assertEquals(
             mapOf(boolKey to RowKey(emptyList()), strKey to RowKey(emptyList())),
             (analyseMonoType(s) as VariantType).possibleKeys)
-
     }
 }

@@ -88,23 +88,5 @@ internal class ExprAnalyserTest {
             analyseDecl("(:: :Foo Int Str)"))
 
     }
-
-    @Test
-    fun `analyses polyvar`() {
-        val fooVar = Symbol(ID, "foo")
-
-        val polyDecl = analyseDecl("(:: (. a) foo a)") as PolyVarDeclExpr
-
-        assertEquals(
-            PolyVarDeclExpr(fooVar, listOf(aTypeVar), emptyList(), aTypeVar),
-            polyDecl)
-
-        val polyDecl2 = analyseDecl("(:: (. a) (foo a) Int)")
-
-        assertEquals(
-            PolyVarDeclExpr(fooVar, listOf(aTypeVar), emptyList(), FnType(listOf(aTypeVar), IntType)),
-            polyDecl2)
-    }
-
 }
 

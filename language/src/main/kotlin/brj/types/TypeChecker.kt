@@ -44,11 +44,6 @@ internal class Instantiator {
             is TypeVarType -> instantiate(type)
             else -> type.fmap(this::instantiate)
         }
-
-    fun instantiate(polyConstraints: PolyConstraints): PolyConstraints =
-        polyConstraints.map {
-            it.copy(primaryTVs = it.primaryTVs.map(this::instantiate), secondaryTVs = it.secondaryTVs.map(this::instantiate))
-        }.toSet()
 }
 
 internal sealed class TypeException : Exception() {
@@ -283,7 +278,7 @@ private fun caseExprTyping(expr: CaseExpr, expectedType: MonoType?): Typing {
             clauseTypings.map { returnType to it.second.monoType }
                 + (exprTyping.monoType to variantType)
                 + defaultTyping?.let { returnType to it.monoType }).filterNotNull(),
-        extraLVs = clauseTypings.flatMap { (clause, _) -> clause.bindings.zip(clause.variantKey.paramTypes.map(instantiator::instantiate)) }
+        extraLVs = clauseTypings.flatMap { (clause, _) -> clause.bindings.zip(clause.variantKey.paramTypes.map { instantiator.instantiate(it) }) }
     )
 }
 

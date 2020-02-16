@@ -18,12 +18,6 @@ internal val QSYMBOL = Symbol(TYPE, "QSymbol")
 internal val FN_TYPE = Symbol(TYPE, "Fn")
 internal val VARIANT_TYPE = Symbol(ID, "+")
 
-internal data class PolyConstraint(val sym: QSymbol, val primaryTVs: List<TypeVarType>, val secondaryTVs: List<TypeVarType>) {
-    override fun toString() = "($sym ${(primaryTVs + secondaryTVs).joinToString(" ")})"
-}
-
-internal typealias PolyConstraints = Set<PolyConstraint>
-
 internal data class Type(val monoType: MonoType, val effects: Set<QSymbol> = emptySet()) {
     override fun toString(): String {
         return if (effects.isEmpty()) monoType.toString() else "(! $monoType #{${effects.joinToString(", ")}}"

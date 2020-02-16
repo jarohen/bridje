@@ -61,15 +61,6 @@ internal class JavaImportVar(javaImport: JavaImport, override val value: Any) : 
     override val type = javaImport.type
 }
 
-internal data class PolyVar(val polyConstraint: PolyConstraint, val monoType: MonoType, override val value: Any) : GlobalVar() {
-    override val sym = polyConstraint.sym
-    override val type = Type(monoType)
-
-    override fun toString() = sym.toString()
-}
-
-internal data class PolyVarImpl(val polyVar: PolyVar, val primaryImplTypes: List<MonoType>, val secondaryImplTypes: List<MonoType>, val value: Any)
-
 internal sealed class TypeAlias(open val sym: QSymbol, open val typeVars: List<TypeVarType>, open val type: MonoType?)
 internal class TypeAlias_(override val sym: QSymbol, override val typeVars: List<TypeVarType> = emptyList(), override var type: MonoType?) : TypeAlias(sym, typeVars, type) {
     override fun equals(other: Any?): Boolean {
@@ -87,17 +78,10 @@ internal class TypeAlias_(override val sym: QSymbol, override val typeVars: List
 @ExportLibrary(InteropLibrary::class)
 internal data class NSEnv(val ns: Symbol,
                           val typeAliases: Map<Symbol, TypeAlias> = emptyMap(),
-                          val vars: Map<Symbol, GlobalVar> = emptyMap(),
-                          val polyVarImpls: Map<QSymbol, List<PolyVarImpl>> = emptyMap()) : BridjeObject {
+                          val vars: Map<Symbol, GlobalVar> = emptyMap()) : BridjeObject {
 
     operator fun plus(globalVar: GlobalVar): NSEnv = copy(vars = vars + (globalVar.sym.local to globalVar))
     operator fun plus(alias: TypeAlias) = copy(typeAliases = typeAliases + (alias.sym.local to alias))
-    operator fun plus(impl: PolyVarImpl): NSEnv {
-        val sym = impl.polyVar.sym
-        return copy(polyVarImpls = polyVarImpls +
-            (sym to (polyVarImpls[sym]
-                ?: emptyList()).filterNot { it.primaryImplTypes == impl.primaryImplTypes } + impl))
-    }
 
     @ExportMessage
     fun hasMembers() = true
