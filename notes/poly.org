@@ -150,3 +150,55 @@ we have the same problem with type-aliases and variants when it comes to type se
   {(:foo {:baz})} ; type
   {:foo (:Cons {:a 5, :baz 5})} ; value
 #+end_src
+
+ok, been a while.
+how about we say these type vars are responsible for all the polymorphism underneath them?
+what'd this mean?
+
+#+begin_src clojure
+  (:: ::foo Int)
+
+  (:: [r] (::foo {::foo (& r)}) Int)
+
+  (:: ::address {::a1 ::a2 ::city ::postal-code})
+  (:: [r] ::address {::a1 ::a2 ::city ::postal-code (& r)})
+
+  (:: [r]
+      (make-order {::first-name ::last-name
+                   (::address {::phone (& r)})})
+      {(::address {::phone (& r)})})
+
+  (:: [a] (::thing (+ (::Ok a) ::Nil)))
+
+  (make-order {::first-name "James",
+               ::last-name "Henderson",
+               ::address {::a1 "A1", ::phone "04431"}
+               ::thing (::Ok (::Ok 42))})
+  ;; r :: {(::address {::phone}), (::thing (::Ok Int))}
+
+  ;; vector of records?
+
+  [{::foo 1} {::foo 2, ::bar 1}]
+  ;; :: [{::foo}]
+
+  ;; unqualified
+  (:: [a] (:foo {(:foo a)}) a)
+
+  [(make-order {::first-name "James",
+                ::last-name "Henderson",
+                ::address {::a1 "A1", ::a2 "A2" ::phone "04431"}
+                ::thing (::Ok (::Ok 42))})
+   (make-order {::first-name "James",
+                ::last-name "Henderson",
+                ::address {::a1 "A1", ::phone "04431"}
+                ::thing (::Ok (::Ok 42))})]
+  ;; :: [{(::address {::a1 ::phone})}]
+#+end_src
+
+ok, happy with a type variable being at every level, reckon I understand how that'd work (standard row types)
+how can we simplify it, practically?
+when we parse/render types, we can elide TVs that only appear once - but if you accept and return a nested structure, there's necessarily going to be loads
+(everything else seems to parse/render TVs all the way down)
+
+maybe we don't even initialise a type-var for them until we know it occurs in more than one place?
+hmm, not convinced, we'd need some way to refer to them in the mapping so that we could replace them
