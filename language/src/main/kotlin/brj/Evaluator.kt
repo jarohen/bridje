@@ -1,11 +1,8 @@
 package brj
 
 import brj.analyser.*
-import brj.runtime.BridjeFunction
-import brj.reader.Form
-import brj.reader.NSForms
+import brj.reader.*
 import brj.runtime.*
-import brj.types.Type
 
 internal interface Emitter {
     fun evalValueExpr(expr: ValueExpr): Any
@@ -77,14 +74,17 @@ internal class Evaluator(private val emitter: Emitter) {
     }
 
     fun evalNS(env: RuntimeEnv, nsForms: NSForms): RuntimeEnv {
+        val exprAnalyser = ExprAnalyser(Resolver.NSResolver(env))
         val javaImportNSEnvs = nsForms.nsHeader.aliases.values.mapNotNull { alias ->
             when (alias) {
                 is JavaAlias -> {
                     NSEnv(alias.ns,
-                        vars = alias.decls.mapValues { (_, decl) ->
-                            val javaImport = JavaImport(QSymbol(alias.ns, decl.sym), alias.clazz, decl.sym.baseStr, Type(decl.type))
-                            JavaImportVar(javaImport, emitter.emitJavaImport(javaImport))
-                        })
+                        vars = ParserState(alias.typeForms).varargs(exprAnalyser.declAnalyser)
+                            .associate { decl ->
+                                decl as? VarDeclExpr ?: TODO()
+                                val javaImport = JavaImport(QSymbol(alias.ns, decl.sym), alias.clazz, decl.sym.baseStr, decl.type)
+                                decl.sym to JavaImportVar(javaImport, emitter.emitJavaImport(javaImport))
+                            })
                 }
                 is BridjeAlias -> null
             }

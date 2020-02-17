@@ -1,5 +1,6 @@
 package brj.analyser
 
+import brj.reader.NSHeader
 import brj.runtime.*
 import brj.runtime.SymKind.*
 

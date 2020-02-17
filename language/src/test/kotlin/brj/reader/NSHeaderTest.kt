@@ -1,12 +1,9 @@
-package brj.analyser
+package brj.reader
 
-import brj.reader.readForms
+import brj.analyser.ParserState
 import brj.runtime.QSymbol
 import brj.runtime.SymKind.*
 import brj.runtime.Symbol
-import brj.types.FnType
-import brj.types.IntType
-import brj.types.StringType
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
@@ -29,11 +26,7 @@ class NSHeaderTest {
         assertEquals(mapOf(
             Symbol(ID, "bar") to BridjeAlias(Symbol(ID, "foo.bar")),
             Symbol(TYPE, "Str") to
-                JavaAlias(Symbol(ID, "foo\$Str"), Symbol(ID, String::class.java.name!!), mapOf(
-                    Symbol(ID, "bar") to
-                        JavaInteropDecl(
-                            Symbol(ID, "bar"),
-                            FnType(listOf(StringType), IntType))))),
+                JavaAlias(Symbol(ID, "foo\$Str"), Symbol(ID, String::class.java.name!!), readForms("(:: (bar Str) Int)"))),
 
             parseNSHeader("""
               (ns foo

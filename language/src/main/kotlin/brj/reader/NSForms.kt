@@ -1,7 +1,6 @@
 package brj.reader
 
-import brj.analyser.NSHeader
-import brj.analyser.NSHeader.Companion.nsHeaderParser
+import brj.reader.NSHeader.Companion.nsHeaderParser
 import brj.analyser.ParserState
 import brj.emitter.BUILTINS_NS
 import brj.runtime.Symbol

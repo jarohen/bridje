@@ -1,11 +1,11 @@
 @file:Suppress("NestedLambdaShadowedImplicitParameter")
 
-package brj.analyser
+package brj.reader
 
-import brj.reader.ListForm
-import brj.reader.RecordForm
-import brj.reader.SetForm
-import brj.reader.SymbolForm
+import brj.analyser.ExprAnalyser
+import brj.analyser.ParserState
+import brj.analyser.Resolver
+import brj.analyser.VarDeclExpr
 import brj.runtime.QSymbol
 import brj.runtime.SymKind.*
 import brj.runtime.Symbol
@@ -22,7 +22,7 @@ internal sealed class Alias {
 
 internal data class BridjeAlias(override val ns: Symbol) : Alias()
 internal data class JavaInteropDecl(val sym: Symbol, val type: MonoType)
-internal data class JavaAlias(override val ns: Symbol, val clazz: Symbol, val decls: Map<Symbol, JavaInteropDecl>) : Alias()
+internal data class JavaAlias(override val ns: Symbol, val clazz: Symbol, val typeForms: List<Form>) : Alias()
 
 internal data class NSHeader(val ns: Symbol,
                              val refers: Map<Symbol, QSymbol> = emptyMap(),
@@ -39,8 +39,6 @@ internal data class NSHeader(val ns: Symbol,
     }
 
     companion object {
-        private val exprAnalyser = ExprAnalyser(Resolver.NSResolver())
-
         private fun refersAnalyser(it: ParserState) =
             it.varargs {
                 val nsSym = it.expectForm<SymbolForm>().sym
@@ -66,10 +64,7 @@ internal data class NSHeader(val ns: Symbol,
                             sym to JavaAlias(
                                 Symbol(ID, "$ns\$${sym}"),
                                 Symbol(ID, it.expectSym(ID).baseStr),
-                                it.varargs {
-                                    val expr = exprAnalyser.declAnalyser(it) as VarDeclExpr
-                                    expr.sym to JavaInteropDecl(expr.sym, expr.type.monoType)
-                                }.toMap())
+                                it.consume())
                         }
                     }
                 }) ?: TODO()
@@ -93,7 +88,7 @@ internal data class NSHeader(val ns: Symbol,
                             nsHeader = when (sym) {
                                 REFERS -> {
                                     if (nsHeader.refers.isNotEmpty()) TODO()
-                                    nsHeader.copy(refers = it.nested(RecordForm::forms, ::refersAnalyser))
+                                    nsHeader.copy(refers = it.nested(RecordForm::forms, Companion::refersAnalyser))
                                 }
 
                                 ALIASES -> {

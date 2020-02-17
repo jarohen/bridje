@@ -3,6 +3,7 @@ package brj.analyser
 import brj.reader.Form
 import brj.reader.ListForm
 import brj.reader.NSForms
+import brj.reader.NSHeader
 import brj.reader.RecordForm
 import brj.runtime.SymKind.ID
 import brj.runtime.Symbol
