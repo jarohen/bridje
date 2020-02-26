@@ -115,7 +115,10 @@ internal data class ExprAnalyser(val resolver: Resolver,
                 VarDeclExpr(preamble.sym, isEffect, type)
             }
 
-            RECORD -> RecordKeyDeclExpr(preamble.sym, preamble.typeVars, typeAnalyser.monoTypeAnalyser(it))
+            RECORD -> {
+                val type = typeAnalyser.monoTypeAnalyser(it)
+                RecordKeyDeclExpr(preamble.sym, preamble.typeVars + (type.ftvs() - preamble.typeVars), type)
+            }
             VARIANT -> VariantKeyDeclExpr(preamble.sym, preamble.typeVars, it.varargs(typeAnalyser::monoTypeAnalyser))
             TYPE -> TypeAliasDeclExpr(preamble.sym, preamble.typeVars, if (it.forms.isNotEmpty()) typeAnalyser.monoTypeAnalyser(it) else null)
         }.also { _ -> it.expectEnd() }

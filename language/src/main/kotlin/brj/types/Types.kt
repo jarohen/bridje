@@ -1,10 +1,8 @@
 package brj.types
 
 import brj.runtime.*
-import brj.runtime.RecordKey
-import brj.runtime.SymKind.*
-import brj.runtime.TypeAlias
-import brj.runtime.VariantKey
+import brj.runtime.SymKind.ID
+import brj.runtime.SymKind.TYPE
 import brj.types.TypeException.UnificationError
 
 internal val STR = Symbol(TYPE, "Str")
@@ -34,6 +32,23 @@ internal sealed class MonoType {
         t as? T ?: throw UnificationError(this, t)
 
     open fun fmap(f: (MonoType) -> MonoType): MonoType = this
+
+    fun ftvs(): List<TypeVarType> {
+        fun ftvs(): List<TypeVarType> = when (this) {
+            BoolType, StringType,
+            IntType, BigIntType,
+            FloatType, BigFloatType,
+            SymbolType, QSymbolType -> emptyList()
+            is TypeVarType -> listOf(this)
+            is VectorType -> this.elType.ftvs()
+            is SetType -> this.elType.ftvs()
+            is FnType -> this.paramTypes.flatMap { it.ftvs() } + this.returnType.ftvs()
+            is RecordType -> this.keyTypes.values.flatten().flatMap { it.ftvs() } + this.typeVar
+            is VariantType -> this.possibleKeys.values.flatMap { it.typeParams }.flatMap { it.ftvs() }
+            is TypeAliasType -> this.typeAlias.type!!.ftvs()
+        }
+        return ftvs().distinct()
+    }
 
     internal open fun applyMapping(mapping: Mapping): MonoType = fmap { it.applyMapping(mapping) }
 }
@@ -118,12 +133,16 @@ internal data class RowKey(val typeParams: List<MonoType>) {
     internal fun fmap(f: (MonoType) -> MonoType) = RowKey(typeParams.map(f))
 }
 
-internal data class RecordType(val hasKeys: Map<RecordKey, RowKey>,
-                               val typeVar: RowTypeVar) : MonoType() {
+internal typealias RowKeyType = List<MonoType>
+
+internal data class RecordType(val hasKeys: Set<RecordKey>? = null,
+                               val needsKeys: Set<RecordKey> = emptySet(),
+                               val keyTypes: Map<RecordKey, RowKeyType> = emptyMap(),
+                               val typeVar: TypeVarType) : MonoType() {
 
     companion object {
         internal fun accessorType(recordKey: RecordKey): Type {
-            val recordType = RecordType(mapOf(recordKey to RowKey(recordKey.typeVars)), RowTypeVar(true))
+            val recordType = RecordType(hasKeys = setOf(recordKey), keyTypes = mapOf(recordKey to recordKey.typeVars), typeVar = TypeVarType())
 
             return Type(FnType(listOf(recordType), recordKey.type))
         }
@@ -132,30 +151,55 @@ internal data class RecordType(val hasKeys: Map<RecordKey, RowKey>,
     override fun unifyEq(other: MonoType): Unification {
         val otherRecord: RecordType = ensure(other)
 
-        val newTypeVar = RowTypeVar(typeVar.open && otherRecord.typeVar.open)
+        val newTypeVar = TypeVarType()
 
-        fun minus(left: RecordType, right: RecordType): Pair<RowTypeVar, Pair<Map<RecordKey, RowKey>, RowTypeVar>> {
-            val keyDiff = left.hasKeys - right.hasKeys.keys
-            if (!right.typeVar.open && keyDiff.isNotEmpty()) {
-                TODO("missing keys: ${keyDiff.keys}")
+        operator fun RecordType.minus(other: RecordType): RecordType {
+            val keyDiff = this.needsKeys - other.hasKeys.orEmpty()
+            if (other.hasKeys != null && keyDiff.isNotEmpty()) {
+                TODO("missing keys: $keyDiff")
             }
 
-            return right.typeVar to Pair(keyDiff, newTypeVar)
+            return RecordType(
+                hasKeys = when {
+                    other.hasKeys == null -> this.hasKeys
+                    this.hasKeys == null -> null
+                    else -> other.hasKeys - this.hasKeys
+                },
+                needsKeys = other.needsKeys + this.needsKeys,
+                keyTypes = this.keyTypes - other.keyTypes.keys,
+                typeVar = newTypeVar)
         }
 
-        return Unification(recordEqs = mapOf(
-            minus(otherRecord, this),
-            minus(this, otherRecord)))
+        val recordEqs = listOf(
+            TypeEq(this.typeVar, otherRecord - this),
+            TypeEq(otherRecord.typeVar, this - otherRecord))
+
+        val keyTypeEqs =
+            this.keyTypes.keys.intersect(otherRecord.keyTypes.keys)
+                .flatMap { this.keyTypes.getValue(it).zip(otherRecord.keyTypes.getValue(it)) }
+
+        return Unification(recordEqs + keyTypeEqs)
     }
 
-    override fun fmap(f: (MonoType) -> MonoType) = RecordType(hasKeys.mapValues { it.value.fmap(f) }, typeVar)
+    override fun fmap(f: (MonoType) -> MonoType) = copy(keyTypes = keyTypes.mapValues { it.value.map(f) })
 
-    override fun applyMapping(mapping: Mapping) =
-        (mapping.recordMapping[typeVar]?.let { (newKeys, newTypeVar) -> RecordType(hasKeys + newKeys, newTypeVar) }
-            ?: this)
-            .fmap { it.applyMapping(mapping) }
+    override fun applyMapping(mapping: Mapping): RecordType {
+        val recordType = when (val mappedType = mapping.typeMapping[typeVar]) {
+            null -> this
+            is RecordType -> RecordType(
+                if (this.hasKeys == null) mappedType.hasKeys else this.hasKeys - mappedType.hasKeys.orEmpty(),
+                this.needsKeys + mappedType.needsKeys,
+                (this.keyTypes + mappedType.keyTypes),
+                mappedType.typeVar
+            )
+            is TypeVarType -> this.copy(typeVar = mappedType)
+            else -> TODO()
+        }
 
-    override fun toString() = "{${hasKeys.keys.joinToString(" ")}}"
+        return recordType.copy(keyTypes = recordType.keyTypes.mapValues { it.value.map { it.applyMapping(mapping) } })
+    }
+
+//    override fun toString() = "{${hasKeys.keys.joinToString(" ")}}"
 }
 
 internal data class VariantType(val possibleKeys: Map<VariantKey, RowKey>, val typeVar: RowTypeVar) : MonoType() {

@@ -1,12 +1,12 @@
-(ns main-foo
-  {:aliases {b main-bar
+(ns brj.main-foo
+  {:aliases {b brj.main-bar
              Foo (java brj.FooKt
                        (:: (isZero Int) Bool)
                        (:: (dec Int) Int)
                        (:: (conj #{a} a) #{a})
                        (:: (plus Int Int) Int)
                        (:: (str Str Str) Str))}
-   :refers {main-bar #{baz}}})
+   :refers {brj.main-bar #{baz}}})
 
 (:: :Void)
 (:: Void (+ :Void))
@@ -24,6 +24,9 @@
     (if (Foo/isZero y) res (recur (Foo/dec y) (Foo/conj res y)))))
 
 (def (vector el) [el])
+
+(:: :user {})
+(def my-user {:user {:first-name "James", :last-name "Henderson"}})
 
 ; (def list-length (count [1 2 3]))
 

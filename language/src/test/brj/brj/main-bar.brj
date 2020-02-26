@@ -1,4 +1,4 @@
-(ns main-bar {})
+(ns brj.main-bar {})
 
 (:: baz BigInt)
 (def baz 42N)

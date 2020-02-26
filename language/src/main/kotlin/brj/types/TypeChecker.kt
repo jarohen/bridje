@@ -9,20 +9,12 @@ import java.util.*
 internal typealias RowTypeMapping<K> = Map<RowTypeVar, Pair<Map<K, RowKey>, RowTypeVar>>
 
 internal data class Mapping(val typeMapping: Map<TypeVarType, MonoType> = emptyMap(),
-                            val recordMapping: RowTypeMapping<RecordKey> = emptyMap(),
                             val variantMapping: RowTypeMapping<VariantKey> = emptyMap()) {
     fun applyMapping(mapping: Mapping) =
         Mapping(
             this.typeMapping
                 .mapValues { e -> e.value.applyMapping(mapping) }
                 .plus(mapping.typeMapping),
-
-            this.recordMapping
-                .mapValues {
-                    val (ks, tv) = it.value
-                    mapping.recordMapping[tv]?.let { (moreKs, newTv) -> Pair(ks + moreKs, newTv) } ?: it.value
-                }
-                .plus(mapping.recordMapping),
 
             this.variantMapping
                 .mapValues {
@@ -55,10 +47,9 @@ internal sealed class TypeException : Exception() {
 internal typealias TypeEq = Pair<MonoType, MonoType>
 
 internal data class Unification(val typeEqs: List<TypeEq> = emptyList(),
-                                val recordEqs: RowTypeMapping<RecordKey> = emptyMap(),
                                 val variantEqs: RowTypeMapping<VariantKey> = emptyMap())
 
-private fun unifyEqs(eqs_: List<TypeEq>): Mapping {
+internal fun unifyEqs(eqs_: List<TypeEq>): Mapping {
     val eqs = LinkedList(eqs_)
     var mapping = Mapping()
 
@@ -85,10 +76,6 @@ private fun unifyEqs(eqs_: List<TypeEq>): Mapping {
         val unification = t1.unifyEq(t2)
 
         eqs += unification.typeEqs
-        mapping = mapping.applyMapping(
-            Mapping(
-                recordMapping = unification.recordEqs,
-                variantMapping = unification.variantEqs))
     }
 
     return mapping
@@ -135,25 +122,34 @@ private fun setExprTyping(expr: SetExpr, expectedType: MonoType?): Typing {
 }
 
 private fun recordExprTyping(expr: RecordExpr, expectedType: MonoType?): Typing {
-    val typings = expr.entries.map { valueExprTyping(it.expr, it.recordKey.type) }
+    val instantiator = Instantiator()
+    val expectedRecordType = expectedType as? RecordType
 
-    val recordType = RecordType(
-        expr.entries.map { it.recordKey }.associateWith { RowKey(it.typeVars) },
-        RowTypeVar(false))
+    data class InstantiatedEntry(val recordKey: RecordKey, val expr: ValueExpr, val typeVars: List<MonoType>, val type: MonoType)
 
-    val extraEqs = when (expectedType) {
-        null -> emptyList()
-        is RecordType -> {
-            val missingKeys = expectedType.hasKeys.keys - expr.entries.map { it.recordKey }.toSet()
-            if (missingKeys.isNotEmpty()) {
-                TODO("missing keys: $missingKeys")
-            }
-            emptyList()
-        }
-        else -> listOf(TypeEq(expectedType, recordType))
+    val entries = expr.entries.map {
+        val recordKey = it.recordKey
+
+        val typeVars = recordKey.typeVars
+
+        val tvMapping = Mapping(
+            typeVars.zip(expectedRecordType?.keyTypes?.get(recordKey) ?: typeVars.map(instantiator::instantiate))
+                .toMap())
+
+        InstantiatedEntry(recordKey, it.expr,
+            recordKey.typeVars.map { it.applyMapping(tvMapping) },
+            recordKey.type.applyMapping(tvMapping))
     }
 
-    return combine(recordType, typings, extraEqs = extraEqs)
+    val typings = entries.map { Pair(it, valueExprTyping(it.expr, it.type)) }
+
+    return combine(
+        returnType = RecordType(
+            hasKeys = entries.map { it.recordKey }.toSet(),
+            keyTypes = entries.associate { it.recordKey to it.typeVars },
+            typeVar = TypeVarType()),
+        typings = typings.map { it.second },
+        extraEqs = typings.map { it.first.type to it.second.monoType })
 }
 
 private fun ifExprTyping(expr: IfExpr, expectedType: MonoType?): Typing {
@@ -204,12 +200,12 @@ private fun recurExprTyping(expr: RecurExpr): Typing {
 }
 
 private fun fnExprTyping(expr: FnExpr, expectedType: MonoType?): Typing {
-    val params = expr.params.map { it to TypeVarType() }
-    val exprTyping = valueExprTyping(expr.expr)
+    val expectedFnType = expectedType as? FnType
+    val params = expr.params.mapIndexed { idx, it -> it to (expectedFnType?.paramTypes?.get(idx) ?: TypeVarType()) }
+    val exprTyping = valueExprTyping(expr.expr, expectedFnType?.returnType)
 
     val combinedTyping = combine(FnType(params.map { it.second }, exprTyping.monoType), listOf(exprTyping), extraLVs = params)
 
-    // TODO needs to actually check the types
     return if (expectedType != null) combinedTyping.copy(monoType = expectedType) else combinedTyping
 }
 

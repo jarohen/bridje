@@ -19,11 +19,11 @@ fun <R> withCtx(f: (Context) -> R): R {
 fun main() {
     withCtx { ctx ->
         @Suppress("UNUSED_VARIABLE")
-        val env = ctx.eval(Source.create("brj", "(require! main-foo)"))
+        val env = ctx.eval(Source.create("brj", "(require! brj.main-foo)"))
 
         println(ctx.eval("brj", "[1 2]"))
 
-        val value = ctx.eval("brj", """(main-foo/my-fn "Hello" "world!")""")
+        val value = ctx.eval("brj", """(brj.main-foo/my-fn "Hello" "world!")""")
         println("value: $value")
     }
 }

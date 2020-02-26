@@ -95,6 +95,10 @@ internal class TypeAnalyser(private val resolver: Resolver,
                 }) ?: TODO()
             }
 
+            is RecordForm -> {
+                RecordType(typeVar = TypeVarType())
+            }
+
             else -> TODO()
         }
 }
