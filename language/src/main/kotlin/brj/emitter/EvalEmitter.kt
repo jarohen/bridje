@@ -25,7 +25,7 @@ internal abstract class EvalValueNode(private val form: Form) : ValueNode() {
         val expr = ValueExprAnalyser(Resolver.NSResolver(ctx.env)).analyseValueExpr(form)
 
         @Suppress("UNUSED_VARIABLE") // for now
-        val valueExprType = valueExprType(expr, null)
+        val valueExprType = valueExprType(expr)
 
         val fnExpr = FnExpr(params = emptyList(), expr = expr, closedOverLocals = setOf(DEFAULT_EFFECT_LOCAL))
         val fn = (ValueExprEmitter(ctx).evalValueExpr(fnExpr)) as BridjeFunction

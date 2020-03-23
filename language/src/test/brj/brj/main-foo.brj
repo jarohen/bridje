@@ -18,15 +18,18 @@
 (:: :last-name Str)
 ;; (:: User {:first-name :last-name})
 
-(def (count-down x)
+(#_ (def (count-down x)
   (loop [y x
          res #{}]
-    (if (Foo/isZero y) res (recur (Foo/dec y) (Foo/conj res y)))))
+    (if (Foo/isZero y) res (recur (Foo/dec y) (Foo/conj res y))))))
 
-(def (vector el) [el])
+(#_ (def (vector el) [el]))
 
 (:: :user {})
-(def my-user {:user {:first-name "James", :last-name "Henderson"}})
+(#_ (def my-user {:user {:first-name "James", :last-name "Henderson"}}))
+
+(def (say-hi m)
+  (str "Hi, " (:first-name (:user m))))
 
 ; (def list-length (count [1 2 3]))
 

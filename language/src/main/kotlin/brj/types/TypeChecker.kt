@@ -40,8 +40,6 @@ internal class Instantiator {
 
 internal sealed class TypeException : Exception() {
     data class UnificationError(val t1: MonoType, val t2: MonoType) : TypeException()
-    data class ExpectedFunction(val expr: ValueExpr, val type: MonoType) : TypeException()
-    data class ArityError(val fnType: FnType, val argExprs: List<ValueExpr>) : TypeException()
 }
 
 internal typealias TypeEq = Pair<MonoType, MonoType>
@@ -81,9 +79,9 @@ internal fun unifyEqs(eqs_: List<TypeEq>): Mapping {
     return mapping
 }
 
-private data class Typing(val monoType: MonoType,
-                          val monoEnv: MonoEnv = emptyMap(),
-                          val effects: Set<QSymbol> = emptySet())
+internal data class Typing(val monoType: MonoType,
+                           val monoEnv: MonoEnv = emptyMap(),
+                           val effects: Set<QSymbol> = emptySet())
 
 private fun combine(returnType: MonoType,
                     typings: Iterable<Typing> = emptyList(),
@@ -105,43 +103,42 @@ private fun combine(returnType: MonoType,
     )
 }
 
-private fun vectorExprTyping(expr: VectorExpr, expectedType: MonoType?): Typing {
-    val typings = expr.exprs.map { valueExprTyping(it, (expectedType as? VectorType)?.elType) }
+private fun vectorExprTyping(expr: VectorExpr): Typing {
+    val typings = expr.exprs.map { valueExprTyping(it) }
     val returnType = TypeVarType()
     val vectorType = VectorType(returnType)
 
-    return combine(vectorType, typings, extraEqs = typings.map { it.monoType to returnType } + listOfNotNull(expectedType?.let { it to vectorType }))
+    return combine(vectorType, typings,
+        extraEqs = typings.map { it.monoType to returnType })
 }
 
-private fun setExprTyping(expr: SetExpr, expectedType: MonoType?): Typing {
-    val typings = expr.exprs.map { valueExprTyping(it, (expectedType as? SetType)?.elType) }
+private fun setExprTyping(expr: SetExpr): Typing {
+    val typings = expr.exprs.map { valueExprTyping(it) }
     val returnType = TypeVarType()
     val setType = SetType(returnType)
 
-    return combine(setType, typings, extraEqs = typings.map { it.monoType to returnType } + listOfNotNull(expectedType?.let { it to setType }))
+    return combine(setType, typings,
+        extraEqs = typings.map { it.monoType to returnType })
 }
 
-private fun recordExprTyping(expr: RecordExpr, expectedType: MonoType?): Typing {
+private fun recordExprTyping(expr: RecordExpr): Typing {
     val instantiator = Instantiator()
-    val expectedRecordType = expectedType as? RecordType
 
     data class InstantiatedEntry(val recordKey: RecordKey, val expr: ValueExpr, val typeVars: List<MonoType>, val type: MonoType)
 
-    val entries = expr.entries.map {
-        val recordKey = it.recordKey
+    val entries = expr.entries.map { entry ->
+        val recordKey = entry.recordKey
 
         val typeVars = recordKey.typeVars
 
-        val tvMapping = Mapping(
-            typeVars.zip(expectedRecordType?.keyTypes?.get(recordKey) ?: typeVars.map(instantiator::instantiate))
-                .toMap())
+        val tvMapping = Mapping(typeVars.associateWith(instantiator::instantiate))
 
-        InstantiatedEntry(recordKey, it.expr,
+        InstantiatedEntry(recordKey, entry.expr,
             recordKey.typeVars.map { it.applyMapping(tvMapping) },
             recordKey.type.applyMapping(tvMapping))
     }
 
-    val typings = entries.map { Pair(it, valueExprTyping(it.expr, it.type)) }
+    val typings = entries.map { Pair(it, valueExprTyping(it.expr)) }
 
     return combine(
         returnType = RecordType(
@@ -152,10 +149,10 @@ private fun recordExprTyping(expr: RecordExpr, expectedType: MonoType?): Typing 
         extraEqs = typings.map { it.first.type to it.second.monoType })
 }
 
-private fun ifExprTyping(expr: IfExpr, expectedType: MonoType?): Typing {
-    val predExprTyping = valueExprTyping(expr.predExpr, BoolType)
-    val thenExprTyping = valueExprTyping(expr.thenExpr, expectedType)
-    val elseExprTyping = valueExprTyping(expr.elseExpr, expectedType)
+private fun ifExprTyping(expr: IfExpr): Typing {
+    val predExprTyping = valueExprTyping(expr.predExpr)
+    val thenExprTyping = valueExprTyping(expr.thenExpr)
+    val elseExprTyping = valueExprTyping(expr.elseExpr)
 
     val returnType = TypeVarType()
 
@@ -166,26 +163,26 @@ private fun ifExprTyping(expr: IfExpr, expectedType: MonoType?): Typing {
             returnType to elseExprTyping.monoType))
 }
 
-private fun letExprTyping(expr: LetExpr, expectedType: MonoType?): Typing {
+private fun letExprTyping(expr: LetExpr): Typing {
     val bindingTypings = expr.bindings.map { it.localVar to valueExprTyping(it.expr) }
-    val exprTyping = valueExprTyping(expr.expr, expectedType)
+    val exprTyping = valueExprTyping(expr.expr)
 
     return combine(exprTyping.monoType,
         typings = bindingTypings.map { it.second } + exprTyping,
         extraLVs = bindingTypings.map { it.first to it.second.monoType })
 }
 
-private fun doExprTyping(expr: DoExpr, expectedType: MonoType?): Typing {
+private fun doExprTyping(expr: DoExpr): Typing {
     val exprTypings = expr.exprs.map { valueExprTyping(it) }
-    val exprTyping = valueExprTyping(expr.expr, expectedType)
+    val exprTyping = valueExprTyping(expr.expr)
 
     return combine(exprTyping.monoType, exprTypings + exprTyping)
 }
 
-private fun loopExprTyping(expr: LoopExpr, expectedType: MonoType?): Typing {
+private fun loopExprTyping(expr: LoopExpr): Typing {
     val bindingTypings = expr.bindings.map { it to valueExprTyping(it.expr) }
 
-    val bodyTyping = valueExprTyping(expr.expr, expectedType)
+    val bodyTyping = valueExprTyping(expr.expr)
 
     return combine(bodyTyping.monoType,
         typings = bindingTypings.map { it.second } + bodyTyping,
@@ -199,47 +196,47 @@ private fun recurExprTyping(expr: RecurExpr): Typing {
         extraLVs = expr.exprs.map { it.first }.zip(exprTypings.map(Typing::monoType)))
 }
 
-private fun fnExprTyping(expr: FnExpr, expectedType: MonoType?): Typing {
-    val expectedFnType = expectedType as? FnType
-    val params = expr.params.mapIndexed { idx, it -> it to (expectedFnType?.paramTypes?.get(idx) ?: TypeVarType()) }
-    val exprTyping = valueExprTyping(expr.expr, expectedFnType?.returnType)
+private fun fnExprTyping(expr: FnExpr): Typing {
+    val params = expr.params.map { it to TypeVarType() }
+    val exprTyping = valueExprTyping(expr.expr)
 
-    val combinedTyping = combine(FnType(params.map { it.second }, exprTyping.monoType), listOf(exprTyping), extraLVs = params)
-
-    return if (expectedType != null) combinedTyping.copy(monoType = expectedType) else combinedTyping
+    return combine(FnType(params.map { it.second }, exprTyping.monoType), listOf(exprTyping), extraLVs = params)
 }
 
-private fun callExprTyping(expr: CallExpr, expectedType: MonoType?): Typing {
+private fun callExprTyping(expr: CallExpr): Typing {
     val fnExpr = expr.f
     val argExprs = expr.args
 
-    val argTVs = generateSequence { TypeVarType() }.take(argExprs.size).toList()
-    val returnType = expectedType ?: TypeVarType()
+    val argTVs = generateSequence { TypeVarType() }.take(expr.args.size).toList()
+    val returnType = TypeVarType()
+    val fnType = FnType(argTVs, returnType)
 
-    val fnExprTyping = valueExprTyping(fnExpr, FnType(argTVs, returnType))
-    val fnExprType = fnExprTyping.monoType.let { monoType ->
-        monoType as? FnType ?: throw TypeException.ExpectedFunction(fnExpr, monoType)
-    }
+    val fnExprTyping = valueExprTyping(fnExpr)
 
-    val argTypings = argExprs.zip(fnExprType.paramTypes).map { valueExprTyping(it.first, it.second) }
+    val argTypings = argExprs.map { valueExprTyping(it) }
 
-    return combine(fnExprType.returnType, typings = argTypings + fnExprTyping)
+    return combine(fnType.returnType,
+        typings = argTypings + fnExprTyping,
+        extraEqs = listOf(TypeEq(fnType, fnExprTyping.monoType)) +
+            argTypings.map { it.monoType }.zip(fnType.paramTypes)
+    )
 }
 
-private fun localVarTyping(lv: LocalVar, expectedType: MonoType?): Typing {
-    val typeVar = expectedType ?: TypeVarType()
-    return combine(typeVar, extraLVs = listOf(lv to typeVar))
+private fun localVarTyping(expr: LocalVarExpr): Typing {
+    val typeVar = TypeVarType()
+    return combine(typeVar, extraLVs = listOf(expr.localVar to typeVar))
 }
 
 private fun globalVarTyping(expr: GlobalVarExpr): Typing {
     val instantiator = Instantiator()
-    return expr.globalVar.type.let { Typing(instantiator.instantiate(it.monoType), effects = it.effects) }
+    val globalVarType = expr.globalVar.type
+    return Typing(instantiator.instantiate(globalVarType.monoType), effects = globalVarType.effects)
 }
 
-private fun withFxTyping(expr: WithFxExpr, expectedType: MonoType?): Typing {
-    val fxTypings = expr.fx.map { it.effectVar to valueExprTyping(it.fnExpr, it.effectVar.type.monoType) }
+private fun withFxTyping(expr: WithFxExpr): Typing {
+    val fxTypings = expr.fx.map { it.effectVar to valueExprTyping(it.fnExpr) }
 
-    val bodyExprTyping = valueExprTyping(expr.bodyExpr, expectedType)
+    val bodyExprTyping = valueExprTyping(expr.bodyExpr)
 
     val combinedTyping = combine(bodyExprTyping.monoType,
         fxTypings.map { it.second }.plus(bodyExprTyping))
@@ -251,17 +248,17 @@ private fun withFxTyping(expr: WithFxExpr, expectedType: MonoType?): Typing {
     return combinedTyping.copy(effects = effects)
 }
 
-private fun caseExprTyping(expr: CaseExpr, expectedType: MonoType?): Typing {
+private fun caseExprTyping(expr: CaseExpr): Typing {
     val returnType = TypeVarType()
 
     val exprTyping = valueExprTyping(expr.expr)
 
     val clauseTypings = expr.clauses.map { clause ->
         if (clause.variantKey.paramTypes.size != clause.bindings.size) TODO()
-        clause to valueExprTyping(clause.bodyExpr, expectedType)
+        clause to valueExprTyping(clause.bodyExpr)
     }
 
-    val defaultTyping = expr.defaultExpr?.let { valueExprTyping(it, expectedType) }
+    val defaultTyping = expr.defaultExpr?.let { valueExprTyping(it) }
 
     val instantiator = Instantiator()
 
@@ -278,45 +275,44 @@ private fun caseExprTyping(expr: CaseExpr, expectedType: MonoType?): Typing {
     )
 }
 
-private fun primitiveExprTyping(actualType: MonoType, expectedType: MonoType?) =
-    if (expectedType == null) Typing(actualType) else combine(expectedType, extraEqs = listOf(TypeEq(expectedType, actualType)))
+private fun primitiveExprTyping(actualType: MonoType) = Typing(actualType)
 
-private fun valueExprTyping(expr: ValueExpr, expectedType: MonoType? = null): Typing =
+internal fun valueExprTyping(expr: ValueExpr): Typing =
     when (expr) {
-        is BooleanExpr -> primitiveExprTyping(BoolType, expectedType)
-        is StringExpr -> primitiveExprTyping(StringType, expectedType)
-        is IntExpr -> primitiveExprTyping(IntType, expectedType)
-        is BigIntExpr -> primitiveExprTyping(BigIntType, expectedType)
-        is FloatExpr -> primitiveExprTyping(FloatType, expectedType)
-        is BigFloatExpr -> primitiveExprTyping(BigFloatType, expectedType)
+        is BooleanExpr -> primitiveExprTyping(BoolType)
+        is StringExpr -> primitiveExprTyping(StringType)
+        is IntExpr -> primitiveExprTyping(IntType)
+        is BigIntExpr -> primitiveExprTyping(BigIntType)
+        is FloatExpr -> primitiveExprTyping(FloatType)
+        is BigFloatExpr -> primitiveExprTyping(BigFloatType)
 
-        is QuotedSymbolExpr -> primitiveExprTyping(SymbolType, expectedType)
-        is QuotedQSymbolExpr -> primitiveExprTyping(QSymbolType, expectedType)
+        is QuotedSymbolExpr -> primitiveExprTyping(SymbolType)
+        is QuotedQSymbolExpr -> primitiveExprTyping(QSymbolType)
 
-        is VectorExpr -> vectorExprTyping(expr, expectedType)
-        is SetExpr -> setExprTyping(expr, expectedType)
+        is VectorExpr -> vectorExprTyping(expr)
+        is SetExpr -> setExprTyping(expr)
 
-        is RecordExpr -> recordExprTyping(expr, expectedType)
+        is RecordExpr -> recordExprTyping(expr)
 
-        is FnExpr -> fnExprTyping(expr, expectedType)
-        is CallExpr -> callExprTyping(expr, expectedType)
+        is FnExpr -> fnExprTyping(expr)
+        is CallExpr -> callExprTyping(expr)
 
-        is IfExpr -> ifExprTyping(expr, expectedType)
-        is LetExpr -> letExprTyping(expr, expectedType)
-        is DoExpr -> doExprTyping(expr, expectedType)
+        is IfExpr -> ifExprTyping(expr)
+        is LetExpr -> letExprTyping(expr)
+        is DoExpr -> doExprTyping(expr)
 
-        is LoopExpr -> loopExprTyping(expr, expectedType)
+        is LoopExpr -> loopExprTyping(expr)
         is RecurExpr -> recurExprTyping(expr)
 
-        is LocalVarExpr -> localVarTyping(expr.localVar, expectedType)
+        is LocalVarExpr -> localVarTyping(expr)
         is GlobalVarExpr -> globalVarTyping(expr)
 
-        is WithFxExpr -> withFxTyping(expr, expectedType)
+        is WithFxExpr -> withFxTyping(expr)
 
-        is CaseExpr -> caseExprTyping(expr, expectedType)
+        is CaseExpr -> caseExprTyping(expr)
     }
 
-internal fun valueExprType(expr: ValueExpr, expectedType: MonoType?): Type {
-    val valueExprTyping = valueExprTyping(expr, expectedType)
+internal fun valueExprType(expr: ValueExpr): Type {
+    val valueExprTyping = valueExprTyping(expr)
     return Type(valueExprTyping.monoType, valueExprTyping.effects)
 }

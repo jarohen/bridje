@@ -59,7 +59,7 @@ internal data class ExprAnalyser(val resolver: Resolver,
 
             val expr = if (locals != null) FnExpr(preamble.sym, locals.map { it.second }, bodyExpr) else bodyExpr
 
-            val type = valueExprType(expr, resolver.resolveVar(preamble.sym)?.type?.monoType)
+            val type = valueExprType(expr)
 
             DefExpr(preamble.sym, expr, type)
         }
@@ -143,7 +143,7 @@ internal data class ExprAnalyser(val resolver: Resolver,
 
         val formType = TypeAliasType(resolver.resolveTypeAlias(FORM)!!, emptyList())
 
-        val exprType = valueExprType(expr, FnType(preamble.fixedParamSyms.map { formType } + listOfNotNull(preamble.varargsSym).map { VectorType(formType) }, formType))
+        val exprType = valueExprType(expr)
 
         DefMacroExpr(preamble.sym, expr, exprType)
     }

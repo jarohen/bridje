@@ -142,7 +142,7 @@ internal data class RecordType(val hasKeys: Set<RecordKey>? = null,
 
     companion object {
         internal fun accessorType(recordKey: RecordKey): Type {
-            val recordType = RecordType(hasKeys = setOf(recordKey), keyTypes = mapOf(recordKey to recordKey.typeVars), typeVar = TypeVarType())
+            val recordType = RecordType(needsKeys = setOf(recordKey), keyTypes = mapOf(recordKey to recordKey.typeVars), typeVar = TypeVarType())
 
             return Type(FnType(listOf(recordType), recordKey.type))
         }
