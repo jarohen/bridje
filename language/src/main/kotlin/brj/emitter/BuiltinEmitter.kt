@@ -65,5 +65,5 @@ internal fun builtinsNSEnv(ctx: BridjeContext) = NSEnv(BUILTINS_NS,
             BridjeFunction(ctx.language.BridjeRootNode(RestNodeGen.create()))),
 
         Symbol("str") to DefVar(QSymbol(BUILTINS_NS, "str"),
-            Type(FnType(listOf(VectorType(StringType)), VectorType(StringType))),
+            Type(FnType(listOf(VectorType(StringType)), StringType)),
             BridjeFunction(ctx.language.BridjeRootNode(StrNodeGen.create())))))
