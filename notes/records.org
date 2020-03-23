@@ -1,0 +1,133 @@
+* on the plane <2020-03-07 Sat>
+do we expect the arg typing to take the expected type into account?
+if we do - can it possibly impact the type vars up in the parent?
+i.e. do we expect this argTyping to return a different type _knowing_ that it's going to be used to call :first-name?
+as and when we come to be passing sigma types down here, we'll want it to return the sigma type too
+so this function should return a refined type - it's not, currently
+the child can't update the expected type at all - if the expected type is too weak, say?
+example cases?
+child is too general (i.e. can return a map of anything) - do we want it to take the expected type into account?
+or do we say that, yes, the child is more general than this, I'm happy to say that the typing
+the problem comes with the local vars - these need to be returned refined - but then again, can the parent do that?
+who do we want to be doing this refinement?
+if the expected type is more general than the actual type, that's when the child should throw an error, IMO
+
+so why are we passing the expected type down? what does it gain us?
+at the moment, not a lot - I don't think - or, at least, we're not using it properly
+maybe we're over-using them? are they pretty much only supposed to be used in the rank-n case?
+
+maybe we should be using it to say that a value needs certain keys - can we do that?
+case of (let [m {}] (:foo m))
+there's no expected type to the {} expr - returns mono-env of {m {}}
+mono-env of the call says that m needs a :foo key
+has to be up to the let to say that this isn't on
+
+ok, (:first-name (:user m))
+if we didn't have expected types
+inner call would have mono env of m has :user
+outer call would then need to have mono env of 'm has :user which has :first-name'
+could just as easily be (let [m2 (:user m)] (:first-name m2))
+so we _shouldn't_ be using expected types for this
+so how do fn args work?
+well, we need to decide whether the passed arg is 'at least as polymorphic as' the expected arg
+do we already have rank-2 fns, in that case?
+
+does that mean that we don't need to keep this distinction between hasKeys/needsKeys?
+there's probably an example here where this matters
+let's say we get in a variable, m, we call a function on it (so it needs to have a certain set of keys)
+but then we unify it with a literal map - so then we need to intersect the keys.
+this is going to reject legit programs, though?
+
+(fn [m] (do (:user m) (if false m {:bar 43})))
+we don't say that m needs to have bar here, because it doesn't, strictly speaking
+(unless the return type specifies that it requires it)
+what type would we return for that?
+couldn't return that it contains all the keys from the input parameter (because it might not)
+can't return that it contains :bar (because it might not)
+the user could explicitly specify that bar's required in the output - and then it wouldn't type check unless bar's present in the input
+what's the typing of the sub-exprs there?
+(:user m) puts m in the monoenv, specifies that it must at least contain a :user key
+(if false m {:bar 42}) would unify `m` with {:bar 42}, presumably return the LUB
+m is a map containing anything, {:bar 42} is closed, containing just :bar
+can't really return that the output type contains :bar, because m might not
+can we return an intersection record here?
+'m' has a typevar tv, this would be the LUB of tv and {:bar}
+which would then be the return type, too, in this case
+are we already in rank-2 territory here, where we can't decide what type this has?
+I think PureScript says that when you unify with a literal map, you have to contain all of its keys too
+- this would remove the problem somewhat
+
+*We don't want extra keys to kill off valid programs, though*
+what's the tradeoff here? that we'd rather return fewer keys and allow the program?
+
+what we're essentially saying is that if m has a bar key, the output type does; if it doesn't, then it might.
+optional keys might also cut it here
+this would be during unification - we'd say the outputted map h
+
+(let [m {:foo 10}] (if _ m {:bar 42}))
+we can't guarantee that m does or doesn't have bar, in the sub-expr, so how do we want to type it?
+an intersection type might work - would be eliminated once we found out whether m had bar or not
+meh, complexity
+
+the other way to address this is with polymorphic constraints
+so we have that m has a type-var tv, we pass up the constraint that the type-var has at least :user (with its type vars)
+
+as part of combine, we'd then check that the usages of the type vars still fell within the constraints
+so let's say we had (let [m {:bar 42}] (:bar m))
+the typing of (:bar m) would become {tv {:bar []}} Int {m {& tv}}
+we'd have {m {:bar}} in the monoenv from the let binding
+we'd then unify the type constraints
+
+isn't this essentially the same as we're doing at the moment, but with the needsKeys moved to a different part?
+it's being a bit more explicit about records being open/closed though
+also, don't think it even solves the problem of what to do about optional keys.
+
+we are going to be adding this kind of polymorphism later, though, so we will need this
+thinking about it, is it that these maps have an implementation of the `:bar` function?
+which then makes them pretty much the same as polymorphic functions
+(although I can't see how that applies to variants, yet)
+
+the thing about this, though, is that we're then _returning_ these things, as polymorphic objects
+- there's no decent parallel for this in Haskell, I don't think
+Haskell would most likely return the LUB of the two - which is tricky when it's a type variable?
+Haskell doesn't have any subtyping, either, so it just unifies and says 'these two must be the same'
+we could say that users have to specify the type in this case? eugh, though
+
+* on the train <2020-03-20 Fri>
+ok, re-summarise
+- we want to stick to each sub-expr being independently typeable
+- we don't want extra keys to kill a program
+- we want to be able to (e.g.) extract values in a let and end up with the same typing
+
+we need to consider:
+- how we type (:bar m)
+- how we type {:bar 42}
+- how we unify two record types
+- how we combine record types with type constraints
+- are we still passing down expected types?
+
+I quite like the idea of splitting constraints and what the maps actually have
+- this seems both like it could extend to polymorphic functions and break up the 'hasKeys/needsKeys' complexity that we have atm.
+- does have an equivalent for variants too, I think - we'd make the constraints a list of the keys that the value could take (optionally open, too)
+- still has the problem of unifying two record types?
+
+let's say we have =(let [m {:bar 42}] (:bar m))=
+when we call (:bar m), we need to have a constraint that m has bar; this constraint is passed up (like effects)
+so type of =(:bar m)= is 'type variable m where m has bar'
+
+type of ={:bar 42}= is a record type - although I wonder whether the type var information also needs to be kept in constraints?
+likely not
+
+right, unifying.
+unifying two record types - i.e. either side of an if
+- I think for this we allow the program, ensure all the type vars match, and use the intersection of the keys
+- alternatives are that we reject the program, but this will mean that users have to ensure that all branches have the same keys, which is annoying
+
+checking a record type against constraints
+- this'll happen when we unify a type var with a concrete record type
+- we'll ensure that the concrete type has all the required keys, add equations for all the type vars, and return the concrete type
+- can we say at that point that 'm' is known, include it in a mapping, and remove it from the constraints?
+  - this'll impact function parameters, I think
+  - when we pass parameters to functions, though, we check for 'at least as general as' - so it's not like we'll prevent larger maps
+  - I think it's fair in this case not to guarantee that any extra keys provided are also returned - we'd only know that at runtime
+  - we can say that those keys /might/ be present, though
