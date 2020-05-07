@@ -1,4 +1,5 @@
-(ns brj.type-checker)
+(ns brj.type-checker
+  (:require [clojure.set :as set]))
 
 (defn ->ast
   ([form] (->ast form {:locals {}}))
@@ -73,77 +74,44 @@
       :lub (let [[[t1-type :as t1] [t2-type :as t2] [_ o]] args]
              (cond
                (= t1 t2) [{o t1} nil]
-               (and (= :mono-tv t1-type) (= :mono-tv t2-type)) [{} constraint]
+               (and (= :mono-tv t1-type) (= :mono-tv t2-type)) [{} #{constraint}]
                (= :mono-tv t2-type) (recur `(:lub ~t2 ~t1 (:mono-tv ~o)))
                (= t1-type t2-type) (case t1-type
                                      :vector (let [tv (MonoTv.)]
                                                [{o `(:vector (:mono-tv ~tv))}
-                                                `(:lub ~(second t1) ~(second t2) (:mono-tv ~tv))]))
+                                                #{`(:lub ~(second t1) ~(second t2) (:mono-tv ~tv))}])
+                                     :record (throw (ex-info "record" {:t1 t1, :t2 t2})))
                :else (case t2-type
                        :str [{(second t1) `(:str), o `(:str)} nil])))))
 
-  (defn try-solve-constraints [constraints orig-mapping]
+  (defn solve [constraints]
     (loop [progress? false
            [c & more-cs] constraints
            next-constraints #{}
-           mapping orig-mapping]
+           mapping {}]
       (if-not c
         (if progress?
           (recur false (-> next-constraints (constraints-apply-mapping mapping)) #{} mapping)
-          [mapping next-constraints (not= orig-mapping mapping)])
+          [mapping next-constraints])
 
-        (let [[new-mapping c'] (try-solve-constraint c)]
-          (recur (or progress? (not= c c'))
-                 more-cs
-                 (cond-> next-constraints c' (conj c'))
+        (let [[new-mapping cs] (try-solve-constraint c)]
+          (recur (or progress? (not= #{c} cs))
+                 (concat more-cs (disj cs c))
+                 (set/union next-constraints (set/intersection #{c} cs))
                  (mapping-apply-mapping mapping new-mapping))))))
-
-  (defn unify-eq [[[t1-type :as t1] [t2-type :as t2] :as eq]]
-    (cond
-      (= t1 t2) [{} []]
-      (= :mono-tv t1-type) (let [[_ mtv] t1]
-                             [{mtv t2} []])
-      (= :mono-tv t2-type) [{} [[t2 t1]]]
-      :else (throw (ex-info "can't unify" {:eq [t1 t2]}))))
-
-  (defn solve [{:keys [eqs constraints]}]
-    (loop [mapping {}
-           constraints constraints
-           eqs eqs
-           mapping-updated? true]
-      (let [[mapping constraints mapping-updated?]
-            (if-not mapping-updated?
-              [mapping constraints false]
-              (try-solve-constraints constraints mapping))
-
-            [eq & more-eqs] (->> eqs
-                                 (map (fn [[t1 t2]]
-                                        [(-> t1 (type-apply-mapping mapping))
-                                         (-> t2 (type-apply-mapping mapping))])))]
-        (if-not eq
-          [mapping constraints]
-
-          (let [[new-mapping extra-eqs] (unify-eq eq)
-                mapping-updated? (not= new-mapping {})
-                mapping (cond-> mapping
-                          mapping-updated? (mapping-apply-mapping new-mapping))]
-            (recur mapping
-                   (cond-> constraints
-                     mapping-updated? (constraints-apply-mapping mapping))
-                   (concat extra-eqs more-eqs)
-                   mapping-updated?))))))
 
   ;; by solving constraints, we solve type vars too
   ;; which implies adding to the mapping
   ;; when we add to the mapping, we have to map over both the constraints and the eqs
 
-  (defn combine-typings [ret {:keys [typings eqs constraints]}]
+  (defn combine-typings [ret {:keys [typings constraints]}]
     (let [mono-envs (into [] (mapcat :mono-env) typings)
           lv-mapping (->> (into #{} (map key) mono-envs)
                           (into {} (map (juxt identity (fn [_] `(:mono-tv ~(MonoTv.)))))))
-          eqs (concat eqs (for [[lv t] mono-envs]
-                            [(get lv-mapping lv) t]))
-          [mapping constraints] (solve {:eqs eqs, :constraints constraints})]
+          constraints (set/union constraints
+                                 (for [[lv t] mono-envs]
+                                   `(:eq ~(get lv-mapping lv) ~t)))
+          [mapping constraints] (solve constraints)]
       {:ret (-> ret (type-apply-mapping mapping))
        :mono-env (->> lv-mapping
                       (into {} (map (fn [[lv [_ mtv :as t]]]
@@ -163,24 +131,30 @@
                     typings (mapv ast-typing args)]
                 (combine-typings `(:vector ~el-tv)
                                  (merge {:typings typings}
-                                        (case (count typings)
-                                          0 {}
-                                          1 {:eqs [[el-tv (:ret (first typings))]]}
-                                          (let [[first-el-type & more-el-types] (map :ret typings)]
-                                            {:constraints (->> more-el-types
+                                        {:constraints (case (count typings)
+                                                        0 #{}
+                                                        1 #{`(:eq ~el-tv ~(:ret (first typings)))}
+                                                        (let [[first-el-type & more-el-types] (map :ret typings)]
+                                                          (->> more-el-types
                                                                (into #{} (map (fn [el-type]
-                                                                                `(:lub ~first-el-type ~el-type ~el-tv)))))})))))
+                                                                                `(:lub ~first-el-type ~el-type ~el-tv)))))))})))
+
+      :record (let [[entries] args
+                    typings (->> entries (into {} (map (juxt key (comp ast-typing val)))))]
+                (combine-typings `(:record ~(->> typings (into {} (map (juxt key (comp :ret val)))))
+                                           nil)
+                                 {:typings typings}))
 
       :if (let [[pred-typing then-typing else-typing] (map ast-typing args)
                 ret `(:mono-tv ~(MonoTv.))]
             (combine-typings ret
                              {:typings [pred-typing then-typing else-typing]
-                              :eqs [['(:bool) (:ret pred-typing)]]
-                              :constraints #{`(:lub ~(:ret then-typing)
+                              :constraints #{`(:eq (:bool) ~(:ret pred-typing))
+                                             `(:lub ~(:ret then-typing)
                                                     ~(:ret else-typing)
                                                     ~ret)}}))))
 
-  (ast-typing `(:if (:local ~'x) (:vector) (:vector (:str "foo") (:str "str")))))
+  (ast-typing (->ast '[{:foo 10, :bar "hello"} {:foo "hey"}])))
 
 (comment
   (ast-typing `(:if (:local ~'x) (:str "foo") (:str "str"))))
@@ -203,6 +177,8 @@
 ;; functional dependencies of merge - l o -> r, r o -> l, l r -> o
 
 ;; merge is what'll likely require the 'meet' type (although only for records)
+
+;; glb constraints come in where you try to unify an lv over two mono-envs
 
 ;; if we have constrained types like this, we can say that the empty vector is of type [a]
 ;; because `(if m [] [1])` would then have a lub type

@@ -251,7 +251,7 @@ we kind of have to do subtyping there, if we don't want them to be the /same/ ty
 [source,clojure]
 ----
 (let [m {:foo 42, :bar 40}
-       n (if true m {:bar 40})]
+      n (if true m {:bar 40})]
   {:vec [m n]
    :rec {:m m, :n n}})
 ----
@@ -264,6 +264,71 @@ we kind of have to do subtyping there, if we don't want them to be the /same/ ty
 
 if it's two closed records on either side of an if, we'd like it to return the intersection, though
 so that means updating one of the sides
+remember that the if has a few return values, we return a typing - a monotype and a monoenv.
+polymorphism would suggest that we also return a set of poly constraints
+the 'then' branch has a return type of t, monoenv `{m t}`.
+
+what happens with `(do (:foo m) m)`?
+`do` takes all the monoenvs of all the subexprs, so I'd expect that `:foo` constraint to be passed up naturally
+`:foo` has the type of at-least-keys :foo, monoenv is m {& r}, return type {& r}
+
+when we unify a type var with a record, we could put a constraint in saying that the type var has at least as many keys as that record.
+then, the variable continues to have the type var type, but the type var itself is constrained
+we then combine the let bindings, we unify - but in this case we want to say that the lhs binding _is_ the rhs return type
+it's the if that's generating the constraints, the let generates equalities
+the if gives us two constraints, t < t', {:bar 40} < t'
+which means t' is the LUB of t and `{:bar 40}`
+so maybe that's the constraint, instead - LUB.
+
+maybe the monoenv can have the subtyping constraints, instead?
+
+ok, least upper bounds
+where LUBs appear is probably fairly straightforward
+so, how we unify them?
+you're going to have a LUB of multiple types, quite possibly
+pairwise LUB on records? can combine these
+pairwise LUB on vectors - pass the LUB down into the element type
+pairwise LUB on X + type var - map type var to base type of X, LUB inner type
+pairwise LUB on variants?
+
+LUB of record + type var is the `(if true m {:foo 42})` case - from which we get `(LUB m {:foo Int})`.
+we then map `m` to `{& r}`, which gives us `(LUB {& r} {:foo Int})`.
+what's the LUB of those two?
+would we need to pass it up?
+eventually that'll meet up with the other equation, `{m {:foo Int, :bar Int}}`, get a unification between `{:foo Int, :bar Int}` and ... ah.
+so this has to be a constraint, right?
+so we say that the if returns `t`, and that `t` is the LUB of `tm` and `{:foo Int}`
+and then the unification is between t and `{:foo Int, :bar Int}`, we unify t, which gives us t = `(LUB {:foo Int, :bar Int} {:foo Int})`
+
+[source,clojure]
+----
+(:: (foo {:foo Int, :bar Int}) {:foo Int})
+(def (foo m)
+  (if true m {:foo 42, :bar 60}))
+
+(:: foo (Fn #{(> u t) (> u {:foo Int, :bar Int})} [t] u))
+
+
+
+(def (bar m n)
+  (if true m n))
+
+(:: bar (Fn [t u] (> #{t u})))
+
+(:: (. a) #{(< t {:foo a})} (:foo t) a)
+
+(:: #{(< c a) (< c b)} (merge a b) c)
+
+(:foo (merge a b))
+
+(:: (assoc {& r} k v) {k v & r})
+----
+
+can we cheat and use that same merge priciple for poly return types?
+
+as soon as you put a variable in a vector, the whole vector becomes constraints.
+what we do know is that when we have constraints, both variables are either records or variants
+(in the `bar` case, they could be either)
 
 
 
