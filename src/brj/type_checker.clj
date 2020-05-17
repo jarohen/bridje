@@ -1,5 +1,6 @@
 (ns brj.type-checker
-  (:require [clojure.set :as set]))
+  (:require [clojure.set :as set])
+  (:import (clojure.lang MapEntry)))
 
 (defn ->ast
   ([form] (->ast form {:locals {}}))
@@ -51,182 +52,79 @@
   (print-method (format "t%04d" (mod (.hashCode x) 10000)) w))
 
 (do
-  (defn type-apply-mapping [[type & args :as t] m]
-    (case type
-      :vector `(:vector ~(type-apply-mapping (first args) m))
-      :mono-tv (or (get m (first args)) t)
-      :lub `(:lub ~@(map #(type-apply-mapping % m) args))
-      t))
+  (defn unify-head [{s1-head :head, :as s1} {s2-head :head, :as s2}]
+    (when (and s1-head s2-head
+               (not= s1-head s2-head))
+      (throw (ex-info "failed to unify"
+                      {:s1 s1, :s2 s2})))
+    (or s1-head s2-head))
 
-  (defn mapping-apply-mapping [m1 m2]
-    (merge (->> m1 (into {} (map (juxt key (comp #(type-apply-mapping % m2) val)))))
-           m2))
+  (defn with-flow-edge [typing [s- s+]]
+    (-> typing
+        (update-in [:states s- :flow+] (fnil conj #{}) s+)
+        (update-in [:states s+ :flow-] (fnil conj #{}) s-)))
 
-  (defn constraint-apply-mapping [[c & args] m]
-    (case c
-      :lub `(:lub ~@(map #(type-apply-mapping % m) args))))
+  (defn biunify [typing [s+ s-]]
+    (clojure.pprint/pprint typing)
 
-  (defn constraints-apply-mapping [c m]
-    (->> c (into #{} (map #(constraint-apply-mapping % m)))))
+    (unify-head (get-in typing [:states s+])
+                (get-in typing [:states s-]))
 
-  (defn try-solve-constraint [[c & args :as constraint]]
-    (case c
-      :lub (let [[[o-type :as o] & ts] args]
-             (case o-type
-               :bool [(into {}
-                            (keep (fn [[t-type :as t]]
-                                    (case t-type
-                                      :bool nil
-                                      :mono-type [(second t) '(:bool)]
-                                      (throw (ex-info "Cannot unify" {:t1 '(:bool)
-                                                                      :t2 t})))))
-                            ts)
-                      #{}]
-               ;; TODO
-               :mono-tv (let [thing (group-by first ts)
-                              types (set (keys thing))]
-                          (condp = types
-                            [] [{} #{}]
-                            [:mono-tv] [{} #{constraint}]
-                            (case (disj types :mono-tv))
-                            (if (> (count (disj types :mono-tv)) 1)
-                              (throw (ex-info "cannot unify" {:ts ts}))))
+    (as-> typing typing
+      (reduce (fn [typing s+']
+                (as-> typing typing
+                  (assoc-in typing [:states s+' :head]
+                            (unify-head (get-in typing [:states s+'])
+                                        (get-in typing [:states s+])))
+                  (reduce with-flow-edge
+                          typing
+                          (for [s- (get-in typing [:states s+ :flow-])]
+                            [s- s+']))))
+              typing
+              (get-in typing [:states s- :flow+]))
 
-                          (cond
-                            (= t1 t2) [{o t1} nil]
-                            (and (= :mono-tv t1-type) (= :mono-tv t2-type)) [{} #{constraint}]
-                            (= :mono-tv t2-type) (recur `(:lub ~t2 ~t1 (:mono-tv ~o)))
-                            (= t1-type t2-type) (case t1-type
-                                                  :vector (let [tv (MonoTv.)]
-                                                            [{o `(:vector (:mono-tv ~tv))}
-                                                             #{`(:lub ~(second t1) ~(second t2) (:mono-tv ~tv))}])
-                                                  :record (throw (ex-info "record" {:t1 t1, :t2 t2})))
-                            :else (case t2-type
-                                    :str [{(second t1) `(:str), o `(:str)} nil])))))))
+      (reduce (fn [typing s-']
+                (as-> typing typing
+                  (assoc-in typing [:states s-' :head]
+                            (unify-head (get-in typing [:states s-'])
+                                        (get-in typing [:states s-])))
+                  (reduce with-flow-edge
+                          typing
+                          (for [s+ (get-in typing [:states s- :flow+])]
+                            [s-' s+]))))
+              typing
+              (get-in typing [:states s+ :flow-]))))
 
-  (defn solve [constraints]
-    (loop [progress? false
-           [c & more-cs] constraints
-           next-constraints #{}
-           mapping {}]
-      (if-not c
-        (if progress?
-          (recur false (-> next-constraints (constraints-apply-mapping mapping)) #{} mapping)
-          [mapping next-constraints])
-
-        (let [[new-mapping cs] (try-solve-constraint c)]
-          (recur (or progress? (not= #{c} cs))
-                 (concat more-cs (disj cs c))
-                 (set/union next-constraints (set/intersection #{c} cs))
-                 (mapping-apply-mapping mapping new-mapping))))))
-
-  (defn combine-typings [ret {:keys [typings constraints]}]
-    (let [lv-usages (->> typings
-                         (mapcat :mono-env)
-                         (group-by key))
-          ;; with `let` vars, we might be able to use the let's ret type instead of a new MonoTv here
-          lv-tvs (->> lv-usages
-                      (into {} (map (juxt key (fn [_] `(:mono-tv ~(MonoTv.)))))))
-          constraints (into (set constraints)
-                            (map (fn [[lv t]]
-                                   `(:glb ~t ~@(get lv-usages lv))))
-                            lv-tvs)
-          [mapping constraints] (solve constraints)]
-      {:ret (-> ret (type-apply-mapping mapping))
-       :mono-env (->> lv-tvs
-                      (into {} (map (fn [[lv t]]
-                                      [lv (type-apply-mapping t mapping)]))))
-       :constraints constraints}))
-
-  (defn ast-typing [[op & args :as expr]]
+  (defn ast-typing [[op & args]]
     (case op
-      (:int :str :bool) {:ret `(~op)}
+      :bool (let [bool+ (gensym 'bool+)]
+              {:ret bool+
+               :states {bool+ {:head :bool}}})
+
+      :int (let [int+ (gensym 'int+)]
+             {:ret int+
+              :states {int+ {:head :int}}})
 
       :local (let [[local] args
-                   ret `(:mono-tv ~(MonoTv.))]
-               {:ret ret
-                :mono-env {local ret}})
+                   local-ret (gensym local)]
+               (-> {:ret local-ret
+                    :locals #{local}}
+                   (with-flow-edge [local local-ret])))
 
-      #_(:vector (let [el-tv `(:mono-tv ~(MonoTv.))
-                       typings (mapv ast-typing args)]
-                   (combine-typings `(:vector ~el-tv)
-                                    {:typings typings
-                                     :constraints #{[el-tv `(:lub ~@(map :ret typings))]}}))
+      :if (let [ret- (gensym 'if-)
+                ret+ (gensym 'if+)
+                bool- (gensym 'bool-)
+                [pred-typing then-typing else-typing :as typings] (map ast-typing args)]
+            (reduce biunify
+                    ;; TODO bugs here, can't just merge q nor mono-env
+                    (-> {:ret ret+
+                         :states (into {bool- {:head :bool}}
+                                       (mapcat :states)
+                                       typings)
+                         :locals (into #{} (mapcat :locals) typings)}
+                        (with-flow-edge [ret- ret+]))
+                    #{[(:ret pred-typing) bool-]
+                      [(:ret then-typing) ret-]
+                      [(:ret else-typing) ret-]}))))
 
-                 :record (let [[entries] args
-                               typings (->> entries (into {} (map (juxt key (comp ast-typing val)))))]
-                           (combine-typings `(:record ~(->> typings (into {} (map (juxt key (comp :ret val))))))
-                                            {:typings typings})))
-
-      :if (let [[pred-typing then-typing else-typing] (map ast-typing args)
-                ret `(:mono-tv ~(MonoTv.))]
-            (combine-typings ret
-                             {:typings [pred-typing then-typing else-typing]
-                              :constraints #{[(:ret pred-typing) '(:bool)]
-                                             [(:ret then-typing) ret]
-                                             [(:ret else-typing) ret]}}))))
-
-  (ast-typing `(:if (:local ~'x) (:local ~'y) (:local ~'z)) #_(->ast '[{:foo 10, :bar "hello"} {:foo "hey"}])))
-
-;; what if we were to split this into positive and negative types?
-
-;; with having just binary constraints, what happens in the vector case?
-;; we have {:foo Int} < e and {:bar Int, :foo Int} < e
-;; then we say that [(⨆ e {:foo Int}) / e+]
-;; we have 'e' in a positive position in the return value, but I don't know how this final 'e' gets eliminated (unless it's part of the simplification)
-
-
-;; so let's say we end up with a type of bool -> (⨆ e {:foo Int} {:foo Int, :bar Int})
-
-;; `(if _ {:foo 25} {:foo 42, :bar 24})`
-;; apparently it's the other way around - {:foo Int} < r, {:foo Int, :bar Int} < r
-;; in the mapping, we replace r+ with (U {:foo Int} r)
-
-(comment
-  (ast-typing `(:if (:local ~'x) (:str "foo") (:str "str"))))
-
-;; interesting things, then
-;; call - how does subsumption work?
-;; type checking
-;; simplifying lubs
-;; if we have that t is the lub of t1 and [t2], can we add that to a mapping?
-;; we could put through a mapping of t1 -> [t3], and t -> [(lub t3 t2)]
-;; what can I conj to vectors if normally vectors are lubs? guess it's `(:: (conj [t] u) [(:lub t u)])`
-
-;; which means that assoc is ...
-;; well, we're doing assoc via lenses, so it'll be `(:: #{(.assoc i k v o)} (assoc i k v) o)`
-
-;; maybe let's do merge the same way, `(:: #{(.merge l r o)} (merge l r) o)`
-;; and then, also, if.
-;; `(:: #{(.lub t e o)} (if p t e) o)`
-;; functional dependencies of lub - we know that l r -> o
-;; functional dependencies of merge - l o -> r, r o -> l, l r -> o
-
-;; merge is what'll likely require the 'meet' type (although only for records)
-
-;; glb constraints come in where you try to unify an lv over two mono-envs
-
-;; how's about if the individual types kept upper/lower bounds?
-
-;; records seem like they'd work ok.
-;; type vars, less so.
-;; I suspect we might still need joins and meets
-
-;; let's head back to `(if foo x y)`
-;; mlsub returns this as a -> a -> a
-
-;; so, can we type `select`?
-;; it's looking like `(select p v f)` is (a -> bool) -> a -> b -> a ⨆ b
-;; `(def (select p v d) (if (p v) v d))`
-
-;; so in the call expr, we set v to be a typevar
-;; we set p to be a -> bool, v to have lower bound a
-;; the if gives d type b and return type lub(a, b)
-
-;; empty vector on the way out is really of type [⊥] - there's nothing you can get out of this vector
-;; vector that's never used is [⊤]
-;; we call both of these [a] in unification
-
-;; if we have constrained types like this, we can say that the empty vector is of type [a]
-;; because `(if m [] [1])` would then have a lub type
-;; might be out of the woods on that one, but `(if m {} {:foo 1})`
+  (ast-typing '(:if (:local y) (:int 25) (:local x))))
