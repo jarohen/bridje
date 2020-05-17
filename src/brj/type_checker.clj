@@ -95,6 +95,15 @@
               typing
               (get-in typing [:states s+ :flow-]))))
 
+  (defn combine-typings [ret typings]
+    {:ret ret
+     :states (->> (map :states typings)
+                  (apply merge-with (fn [s1 s2]
+                                      {:flow- (set/union (:flow- s1) (:flow- s2))
+                                       :flow+ (set/union (:flow+ s1) (:flow+ s2))
+                                       :head (unify-head s1 s2)})))
+     :locals (into #{} (mapcat :locals) typings)})
+
   (defn ast-typing [[op & args]]
     (case op
       :bool (let [bool+ (gensym 'bool+)]
@@ -106,22 +115,19 @@
               :states {int+ {:head :int}}})
 
       :local (let [[local] args
-                   local-ret (gensym local)]
-               (-> {:ret local-ret
-                    :locals #{local}}
-                   (with-flow-edge [local local-ret])))
+                   local- (symbol (str local "-"))
+                   local+ (gensym (str local "+"))]
+               (-> {:ret local+
+                    :locals #{local-}}
+                   (with-flow-edge [local- local+])))
 
       :if (let [ret- (gensym 'if-)
                 ret+ (gensym 'if+)
                 bool- (gensym 'bool-)
                 [pred-typing then-typing else-typing :as typings] (map ast-typing args)]
             (reduce biunify
-                    ;; TODO bugs here, can't just merge q nor mono-env
-                    (-> {:ret ret+
-                         :states (into {bool- {:head :bool}}
-                                       (mapcat :states)
-                                       typings)
-                         :locals (into #{} (mapcat :locals) typings)}
+                    (-> (combine-typings ret+ typings)
+                        (assoc-in [:states bool-] {:head :bool})
                         (with-flow-edge [ret- ret+]))
                     #{[(:ret pred-typing) bool-]
                       [(:ret then-typing) ret-]
