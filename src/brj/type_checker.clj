@@ -52,56 +52,94 @@
   (print-method (format "t%04d" (mod (.hashCode x) 10000)) w))
 
 (do
-  (defn unify-head [{s1-head :head, :as s1} {s2-head :head, :as s2}]
+  (defn propagate-head [states head s]
+    (loop [states states
+           [s & more-states] [s]]
+      (if-not s
+        states
+        (let [{s-head :head, :keys [flow+ flow-]} (get states s)]
+          (if (= head s-head)
+            (recur states more-states)
+            (recur (assoc-in states [s :head] head)
+                   (concat flow+ flow- more-states)))))))
+
+  (defn combine-heads [{s1-head :head, :as s1} {s2-head :head, :as s2}]
     (when (and s1-head s2-head
                (not= s1-head s2-head))
       (throw (ex-info "failed to unify"
                       {:s1 s1, :s2 s2})))
+
     (or s1-head s2-head))
+
+  (defn unify-heads [states s1 s2]
+    (let [head (combine-heads (get states s1) (get states s2))]
+      (-> states
+          (propagate-head head s1)
+          (propagate-head head s2))))
 
   (defn with-flow-edge [typing [s- s+]]
     (-> typing
         (update-in [:states s- :flow+] (fnil conj #{}) s+)
         (update-in [:states s+ :flow-] (fnil conj #{}) s-)))
 
-  (defn biunify [typing [s+ s-]]
-    (clojure.pprint/pprint typing)
+  (defn with-transition [typing [l t r]]
+    (-> typing
+        (update-in [:states l :out t] (fnil conj #{}) r)))
 
-    (unify-head (get-in typing [:states s+])
-                (get-in typing [:states s-]))
-
+  (defn merge+ [typing s+' s+]
     (as-> typing typing
-      (reduce (fn [typing s+']
-                (as-> typing typing
-                  (assoc-in typing [:states s+' :head]
-                            (unify-head (get-in typing [:states s+'])
-                                        (get-in typing [:states s+])))
-                  (reduce with-flow-edge
-                          typing
-                          (for [s- (get-in typing [:states s+ :flow-])]
-                            [s- s+']))))
-              typing
-              (get-in typing [:states s- :flow+]))
+      (update typing :states unify-heads s+' s+)
+      (reduce with-transition typing
+              (for [[t rs] (get-in typing [:states s+ :out])
+                    r rs]
+                [s+' t r]))
+      (reduce with-flow-edge typing
+              (for [s- (get-in typing [:states s+ :flow-])]
+                [s- s+']))))
 
-      (reduce (fn [typing s-']
-                (as-> typing typing
-                  (assoc-in typing [:states s-' :head]
-                            (unify-head (get-in typing [:states s-'])
-                                        (get-in typing [:states s-])))
-                  (reduce with-flow-edge
-                          typing
-                          (for [s+ (get-in typing [:states s- :flow+])]
-                            [s-' s+]))))
+  (defn merge- [typing s-' s-]
+    (as-> typing typing
+      (update typing :states unify-heads s-' s-)
+      (reduce with-transition typing
+              (for [[t rs] (get-in typing [:states s- :out])
+                    r rs]
+                [s-' t r]))
+      (reduce with-flow-edge
               typing
-              (get-in typing [:states s+ :flow-]))))
+              (for [s+ (get-in typing [:states s- :flow+])]
+                [s-' s+]))))
+
+  (defn biunify [typing [s+ s-]]
+    (prn :biunify s+ s-)
+    (as-> typing typing
+      (unify-heads typing s+ s-)
+      (reduce #(merge+ %1 %2 s+) typing (get-in typing [:states s- :flow+]))
+
+      (reduce #(merge- %1 %2 s-) typing (get-in typing [:states s+ :flow-]))
+
+      (reduce biunify typing
+              (doto (for [[t+ rs+] (doto (get-in typing [:states s+ :out]) prn)
+                          [t- rs-] (doto (get-in typing [:states s- :out]) prn)
+                          :when (= t+ t-)
+                          r+ rs+
+                          r- rs-]
+                      [r+ r-])
+                prn))))
 
   (defn combine-typings [ret typings]
     {:ret ret
-     :states (->> (map :states typings)
-                  (apply merge-with (fn [s1 s2]
-                                      {:flow- (set/union (:flow- s1) (:flow- s2))
-                                       :flow+ (set/union (:flow+ s1) (:flow+ s2))
-                                       :head (unify-head s1 s2)})))
+     :states (reduce (fn [states [sid s]]
+                       (let [head (combine-heads s (get states sid))]
+                         (-> states
+                             (assoc sid (if-let [s2 (get states sid)]
+                                          {:head head
+                                           :flow- (set/union (:flow- s) (:flow- s2))
+                                           :flow+ (set/union (:flow+ s) (:flow+ s2))
+                                           :out (merge-with set/union (:out s) (:out s2))}
+                                          s))
+                             (propagate-head head sid))))
+                     {}
+                     (mapcat :states typings))
      :locals (into #{} (mapcat :locals) typings)})
 
   (defn ast-typing [[op & args]]
@@ -131,6 +169,31 @@
                         (with-flow-edge [ret- ret+]))
                     #{[(:ret pred-typing) bool-]
                       [(:ret then-typing) ret-]
-                      [(:ret else-typing) ret-]}))))
+                      [(:ret else-typing) ret-]}))
 
-  (ast-typing '(:if (:local y) (:int 25) (:local x))))
+      :vector (let [ret (gensym 'vec)
+                    el- (gensym 'el-)
+                    el+ (gensym 'el+)
+                    typings (map ast-typing args)]
+                (reduce biunify
+                        (-> (combine-typings ret typings)
+                            (assoc-in [:states ret] {:head :vector})
+                            (with-transition [ret 'el el+])
+                            (with-flow-edge [el- el+]))
+                        (into #{} (map (juxt :ret (constantly el-))) typings)))
+
+      :set (let [ret (gensym 'set)
+                 el- (gensym 'el-)
+                 el+ (gensym 'el+)
+                 typings (map ast-typing args)]
+             (reduce biunify
+                     (-> (combine-typings ret typings)
+                         (assoc-in [:states ret] {:head :set})
+                         (with-transition [ret 'el el+])
+                         (with-flow-edge [el- el+]))
+                     (into #{} (map (juxt :ret (constantly el-))) typings)))))
+
+  ;; TODO functions
+  ;; TODO simplification
+  ;; TODO I don't want joins of different head types
+  (ast-typing '(:if (:local x) (:vector (:local x)) (:vector (:int 25)))))
