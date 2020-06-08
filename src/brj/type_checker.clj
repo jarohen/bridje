@@ -52,31 +52,6 @@
   (print-method (format "t%04d" (mod (.hashCode x) 10000)) w))
 
 (do
-  (defn propagate-head [states head s]
-    (loop [states states
-           [s & more-states] [s]]
-      (if-not s
-        states
-        (let [{s-head :head, :keys [flow+ flow-]} (get states s)]
-          (if (= head s-head)
-            (recur states more-states)
-            (recur (assoc-in states [s :head] head)
-                   (concat flow+ flow- more-states)))))))
-
-  (defn combine-heads [{s1-head :head, :as s1} {s2-head :head, :as s2}]
-    (when (and s1-head s2-head
-               (not= s1-head s2-head))
-      (throw (ex-info "failed to unify"
-                      {:s1 s1, :s2 s2})))
-
-    (or s1-head s2-head))
-
-  (defn unify-heads [states s1 s2]
-    (let [head (combine-heads (get states s1) (get states s2))]
-      (-> states
-          (propagate-head head s1)
-          (propagate-head head s2))))
-
   (defn with-flow-edge [typing [s- s+]]
     (-> typing
         (update-in [:states s- :flow+] (fnil conj #{}) s+)
@@ -85,6 +60,19 @@
   (defn with-transition [typing [l t r]]
     (-> typing
         (update-in [:states l :out t] (fnil conj #{}) r)))
+
+  (defn with-head-class [typing head states]
+    (let [hc (gensym 'hc)]
+      (as-> typing typing
+        (assoc-in typing [:head-classes hc] {:head head, :states states})
+        (reduce (fn [typing state]
+                  (assoc-in typing [:states :head-class] hc))
+                typing
+                states))))
+
+  (declare unify-heads)
+  (declare combine-heads)
+  (declare propagate-head)
 
   (defn merge+ [typing s+' s+]
     (as-> typing typing
@@ -110,7 +98,6 @@
                 [s-' s+]))))
 
   (defn biunify [typing [s+ s-]]
-    (prn :biunify s+ s-)
     (as-> typing typing
       (unify-heads typing s+ s-)
       (reduce #(merge+ %1 %2 s+) typing (get-in typing [:states s- :flow+]))
@@ -118,13 +105,12 @@
       (reduce #(merge- %1 %2 s-) typing (get-in typing [:states s+ :flow-]))
 
       (reduce biunify typing
-              (doto (for [[t+ rs+] (doto (get-in typing [:states s+ :out]) prn)
-                          [t- rs-] (doto (get-in typing [:states s- :out]) prn)
-                          :when (= t+ t-)
-                          r+ rs+
-                          r- rs-]
-                      [r+ r-])
-                prn))))
+              (for [[t+ rs+] (get-in typing [:states s+ :out])
+                    [t- rs-] (get-in typing [:states s- :out])
+                    :when (= t+ t-)
+                    r+ rs+
+                    r- rs-]
+                [r+ r-]))))
 
   (defn combine-typings [ret typings]
     {:ret ret
@@ -145,41 +131,54 @@
   (defn ast-typing [[op & args]]
     (case op
       :bool (let [bool+ (gensym 'bool+)]
-              {:ret bool+
-               :states {bool+ {:head :bool}}})
+              (-> {:ret bool+}
+                  (with-head-class :bool #{bool+})))
 
       :int (let [int+ (gensym 'int+)]
-             {:ret int+
-              :states {int+ {:head :int}}})
+             (-> {:ret int+}
+                 (with-head-class :int #{int+})))
 
       :local (let [[local] args
                    local- (symbol (str local "-"))
                    local+ (gensym (str local "+"))]
                (-> {:ret local+
                     :locals #{local-}}
+                   (with-head-class nil #{local- local+})
                    (with-flow-edge [local- local+])))
 
       :if (let [ret- (gensym 'if-)
                 ret+ (gensym 'if+)
                 bool- (gensym 'bool-)
+                bool-hc (gensym 'hc)
+                ret-hc (gensym 'hc)
                 [pred-typing then-typing else-typing :as typings] (map ast-typing args)]
             (reduce biunify
-                    (-> (combine-typings ret+ typings)
-                        (assoc-in [:states bool-] {:head :bool})
+                    (-> (combine-typings ret+
+                                         (conj typings
+                                               {:states {bool- {:head-class bool-hc}
+                                                         ret- {:head-class ret-hc}
+                                                         ret+ {:head-class ret-hc}}
+                                                :head-classes {bool-hc {:states #{bool-}, :head :bool}
+                                                               ret-hc {:states #{ret- ret+}}}}))
                         (with-flow-edge [ret- ret+]))
                     #{[(:ret pred-typing) bool-]
                       [(:ret then-typing) ret-]
                       [(:ret else-typing) ret-]}))
 
       :vector (let [ret (gensym 'vec)
+                    ret-hc (gensym 'hc)
                     el- (gensym 'el-)
                     el+ (gensym 'el+)
+                    el-hc (gensym 'hc)
                     typings (map ast-typing args)]
                 (reduce biunify
-                        (-> (combine-typings ret typings)
-                            (assoc-in [:states ret] {:head :vector})
-                            (with-transition [ret 'el el+])
-                            (with-flow-edge [el- el+]))
+                        (-> (combine-typings ret
+                                             (conj typings
+                                                   (-> {}
+                                                       (with-head-class nil #{el- el+})
+                                                       (with-head-class :vec #{ret})
+                                                       (with-transition [ret 'el el+])
+                                                       (with-flow-edge [el- el+])))))
                         (into #{} (map (juxt :ret (constantly el-))) typings)))
 
       :set (let [ret (gensym 'set)
@@ -196,4 +195,6 @@
   ;; TODO functions
   ;; TODO simplification
   ;; TODO I don't want joins of different head types
+  ;; and also needs to propagate to all relationships /from/ those nodes
+  ;; maybe DFAing would do that?
   (ast-typing '(:if (:local x) (:vector (:local x)) (:vector (:int 25)))))
