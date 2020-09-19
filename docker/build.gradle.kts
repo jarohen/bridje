@@ -1,6 +1,6 @@
 plugins {
     base
-    id("com.palantir.docker") version "0.22.1"
+    id("com.palantir.docker") version "0.25.0"
 }
 
 evaluationDependsOn(":component")

@@ -4,8 +4,6 @@
     <bytecodeTargetLevel target="11">
       <module name="bridje.component.main" target="11" />
       <module name="bridje.component.test" target="11" />
-      <module name="bridje.main" target="11" />
-      <module name="bridje.test" target="11" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">

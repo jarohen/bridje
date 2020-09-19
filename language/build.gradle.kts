@@ -1,17 +1,11 @@
 plugins {
-    kotlin("jvm") version "1.3.50"
-    kotlin("kapt") version "1.3.50"
+    kotlin("jvm")
+    kotlin("kapt")
     antlr
 }
 
-configurations {
-    all {
-        exclude("org.graalvm.sdk", "graal-sdk")
-    }
-}
-
 dependencies {
-    val truffleVersion = "19.3.0"
+    val truffleVersion = "20.2.0"
 
     implementation(kotlin("stdlib"))
 
@@ -25,7 +19,7 @@ dependencies {
 
     testImplementation(kotlin("test-junit"))
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.5.2")
-    testRuntime("org.junit.jupiter:junit-jupiter-engine:5.5.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.5.2")
 }
 
 configurations {

@@ -1,17 +1,11 @@
 plugins {
-    kotlin("jvm") version "1.3.61"
-}
-
-configurations {
-    all {
-        exclude("org.graalvm.sdk", "graal-sdk")
-    }
+    kotlin("jvm")
 }
 
 dependencies {
     implementation(kotlin("stdlib"))
-    compileOnly("org.graalvm.sdk:graal-sdk:19.3.1")
-    implementation("org.graalvm.sdk:launcher-common:19.3.1")
+    compileOnly("org.graalvm.sdk:graal-sdk:20.2.0")
+    implementation("org.graalvm.sdk:launcher-common:20.2.0")
 
     testImplementation(kotlin("test-junit"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.5.2")
