@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="CompilerConfiguration">
-    <bytecodeTargetLevel>
+    <bytecodeTargetLevel target="11">
       <module name="bridje.component.main" target="11" />
       <module name="bridje.component.test" target="11" />
       <module name="bridje.main" target="11" />
