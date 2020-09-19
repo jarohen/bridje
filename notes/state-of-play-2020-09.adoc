@@ -1,0 +1,109 @@
+= State of Play 2020-09
+
+Getting back into Bridje after a while away, where're we at?
+
+All of the below are linked:
+
+* Objects/records
+* Objects/effects/polymorphism
+* Effects/coroutines
+* Coroutines/sequences (generators)
+
+At the risk of sounding wanky, it seems we need a holistic, consistent solution with the fewest possible number of concepts.
+
+Open questions:
+
+== Record type system
+
+Still haven't implemented this as yet.
+
+* Don't want to implement full algebraic subtyping - looks like it accepts types that we don't want to (e.g. bool ⊔ int).
+* Thoughts about 'head sets', meaning that a type can't ever be unified to be in more than one class
+
+== Objects/resources
+
+These tie together with records (probably one of the reasons I haven't continued with the PoC yet)
+
+We'd like (something like) objects to be used to manage both state and resources
+We considered something like `(:!Taker Int)` to hold state, maybe this is suitable for resources too
+
+We can then add methods to both `:!Taker` and `:Taker` - would these be effects?
+  We then say that the type of such an object is 'something which has an <x> function'
+  Can this be a record?
+
+In this case, it might be possible for an object to have two head types - one being an object, the other being `:Taker`
+I suppose we could unify these correctly - when we come to take the 'meet' of these types, we'd see that `:Taker` has those methods.
+
+How does this combine with records/keys?
+
+* There's two ways I'd like to add methods to objects - one as 'just records', the other added later as extensions
+* Are object fields/keys in a record the same thing? why not?
+
+Would love for records and objects to behave the same way, certainly.
+
+Typeclass polymorphism is another consideration here - this enables things like return-type polymorphism.
+Effects could be seen as type-class polymorphism where either the receiver is implicit, or there is no type parameter.
+We should probably say 'where the receiver is implicit' to allow for multiple receivers.
+
+What happens if we _do_ make the distinction between objects and records?
+We wouldn't need a specific 'object' - records and variants would suffice
+Methods would be the thing that would be separate
+Implication would be that you couldn't just make an anonymous implementation for the functionality - but you could implement the functionality for a very easy record, separately.
+
+We would then _only_ need typeclass polymorphism?
+
+== Coroutines/Effects
+
+NOTE: recent paper saying that any _unhandled_ effects are handled by the lexical environment - good combination of lexical and dynamic
+
+[quote]
+****
+Algebraic effects can be seen to be one-shot delimited continuations
+
+Algebraic effects are to delimited continuations what while is to goto
+****
+
+== Sequences/Iterators/Generators
+
+Generators feel like they won't be particularly performant unless they're inlined - will Truffle/Graal know enough to inline them?
+We'll be passing them a yield function, I suppose, or we could compile them down to iterators (is that what Python/JS do?)
+If we're compiling them down to iterators, I'd be tempted to not bother - we could potentially do that with macros
+But then the `gen` macro isn't going to be hugely different to Clojure's lazy-seq, and it's much more imperative - is it worth introducing a new concept?
+I feel like I want to base on iterators rather than lazy-seqs - get people into the habit of expecting to only iterate an iterator once
+Thing is, something like lazy-seq is quite easy to use, maybe we could use something similar but just not have the implicit 'holding the head' thing.
+(can always convert an iterable into a real sequence, of sorts)
+can also concat two iterators lazily?
+these are pull-based sequences, which I think I prefer
+how would we close these? we considered `(try (doseq [...] (yield ...)) (finally (.close foo)))` but that's not going to work with lazy iterators
+
+if the inner iterator is going to be a suspend fun, is this something we can cope with?
+I suppose this is one for coroutines, above.
+  maybe higher order functions need to have two compilations - one if their function is direct, another if it turns out to be a suspend fun
+  if we do pass a suspend fun maybe the caller can ask for a suspend version of the callee?
+  later.
+
+would be stunned if Rich didn't consider iterators as the base, so why might he have chosen not to base Clojure on them?
+when everything's a seq, in some form, it's much easier to deal with
+we have Seqable, which a lot of core types implement.
+
+likewise, Java added streams when they already had iterators - why? how are they implemented?
+
+Spliterators were added in Java 8 as a revamp of Iterators.
+Streams were then based on Spliterators - we should consider doing the same
+
+Kotlin bases its sequence abstraction on iterators - so clearly not a silly idea
+I'd like users to be able to create their own transformers, though
+wrapSink seems like a good abstraction to write transformers over, I'd say
+
+Spliterators have a `try-advance` function which takes a consumer.
+If we were to call `map` on a Spliterator
+
+Options:
+* Bridje layer over Spliterators, translating Bridje calls into Spliterator calls
+* Re-write it in Bridje
+** Re-write it as built-ins
+** Re-write it in Bridje itself (is Bridje powerful enough?)
+
+Think it's fairly safe to say I'm going with Streams in _some_ way - implementation unclear, but don't think it'll impact the _language_.
+
+== Namespaces/evaluation granularity

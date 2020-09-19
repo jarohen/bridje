@@ -1,0 +1,102 @@
+[source,clojure]
+----
+;; values and functions can both go in records
+
+(: TxLog {::submit-tx ::open-tx-log})
+
+(: (::submit-tx ))
+
+(submit-tx )
+
+(: (:RocksKV ...))
+
+(: [kv] (.get kv -> (Array Byte)) (Array Byte))
+
+(: [a] mzero a)
+(: [a] (.mplus a a) a)
+
+(: [a b] (:Mapper (Fn a b)))
+
+(: (:foo o Str) Str)
+
+(: :bar Str)
+
+(: (:bar o) Str)
+
+(.bar )
+
+(def (.get (:RocksKV ...) k)
+  )
+
+(def (.put (:RocksKV ...) k v)
+  )
+
+(def (:get Int  ))
+
+((:get rocks-db) ) ->
+
+(def [Int] .mzero 0)
+(def [Int] (.mplus l r)
+  (+ a b))
+
+(def (.begin-tx (:TxIngester {tx-log }))
+  )
+
+(.begin-tx )
+
+(def (my-method x)
+  (.get x "foo"))
+
+{(def (foo )
+   )}
+----
+
+in Haskell, return monads.
+
+prototypes - have to be set up when the object's created
+we're adding to them afterwards - so long as the caller can find an implementation for the type they know they have, all's good.
+we're essentially passing the prototype separately
+be nice if we didn't have to - that way, we could just pass that object around
+
+objects have the concept of 'this'
+theory - to attach functionality we have to go to nominal types?
+Guice says not to inject Closeables - inject a pool of them and have the calling resources open and then close them.
+
+we're not interested in creating loads of little objects with both data and behaviour - it's only objects that contain state or resources - 'components'.
+components can just be named variants, tbh
+
+DI-wise:
+* functions need to be able to call a function from the context - this is an effect
+do we distinguish between objects and records?
+this means distinguishing between functions/values and methods - would be nice if we could combine these
+
+methods are functions with a known receiver type
+likewise, fields are values with a known receiver type
+
+* all methods are effects/all effects are methods?
+* all methods are polymorphic/all polymorphism is methods?
+
+things like `(.log logger ...)`, I want to get from the environment - I want to just call them as `(log ...)`
+want to default them with `(def (log ...))` in the declaring namespace
+
+this is like polymorphism with zero type params?
+
+`(: [a] mzero a)`
+`(: [a] (mplus a a) a)`
+for polymorphism
+
+`(def [Int] mzero 0)`
+`(def [Int] (mplus a a) (+ a a))`
+for instances
+
+`(: [a b] (:Mapper (Fn a b))`
+`(: [a] (:Ok a))`
+for polymorphic objects too?
+
+type of an object is the record of its methods - `{.info, .debug}`, etc (albeit they'd obviously all delegate to one method)
+can create an anonymous object? `{(def (.log ...) ...)}`
+
+can manipulate objects like they're records?
+`(assoc foo :log (fn () ...))`
+
+relationship between fields/methods and keys?
