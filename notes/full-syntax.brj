@@ -1,0 +1,147 @@
+(ns full-syntax
+  {:import {f com.foo
+            b com.bar}
+   :refer {com.foo #{my-fn my-other-fn :kw}}})
+
+;;;; Primitives
+
+true, false
+
+"Hello"
+
+4, -2
+1.0, -155.34
+42N
+12.4M
+
+;;;; Defining vars
+
+(: foo Int)
+(def foo 42)
+
+(: (foo Int) Int)
+
+(def (foo x)
+  (+ x 10))
+
+;;;; Basic colls
+
+[1 2 3]
+#{1 2 3}
+
+(: (foo [Int]) Int)
+(: (foo #{Int}) Int)
+
+;;;; Macros
+(defmacro (if-not p t e)
+  `(if ~p ~e ~t))
+
+;;;; Record keys
+
+;; TODO qualified/unqualified?
+;; TODO to allow unqualified keys at all?
+(: :age Int)
+
+{:age 10, :_unq "hello"}
+
+;;;; Polymorphic record keys
+
+(: [a] ::anything #{a})
+
+;;;; Record types
+(: (foo {::name ::age}) Str)
+(: (foo {::name ::age (& r)}) {(* r)})
+
+;;;; Variants
+
+(: (:AnInt Int))
+(: :JustAVariant)
+
+(:AnInt 42)
+:JustAVariant
+
+;;;; Polymorphic variants
+
+(: [a] (:Ok a))
+
+(: [a b] (:Mapper (Fn [a] b)))
+
+;;;; Variant types
+(: (:Composite (+ :AnInt :JustAVariant)))
+
+(: [a] (:Maybe (:Ok a) :Nil))
+
+;;;; Methods
+
+;; open questions:
+;; TODO `.` when it's defined?
+;; TODO just methods? what about multi-param type classes, fun-deps, etc?
+
+;; options:
+;; - single vs multi-parameter type classes
+;; - if single, we can mark it with a `.` and assume the first parameter is the determinant
+
+(: [a] .m0 a)
+(: [a] (.m+ a a) a)
+(: [a] .m1 a)
+(: [a] (.m* a a) a)
+
+(def [(* Int)] .m0 0)
+(def [Int] (.m+ l r)
+  (+ l r))
+
+(: #{(m0 a) (m+ a)} (reduce [a]) a)
+(def (reduce coll)
+  ...)
+
+(: [o a b] (.xform o a) [b])
+
+(: [a b] (:Mapper (Fn [a] b)))
+
+(def [(:Mapper a b) a b] (.xform (:Mapper f) el)
+  [(f el)])
+
+()
+
+;;;; Effects
+
+(: (foo) (! String))
+(def (foo) "default")
+
+;; TODO first-class handlers?
+(with-fx #{(def (foo)
+             "override")}
+  ...)
+
+;; later, maybe
+(with-fx #{(def (foo k)
+             (k "override"))}
+  ...)
+
+;;;; Nullability: TODO
+
+;; Mutability and nullability have different applications, although likely similar implementations in terms of sub-typing
+
+;; Mutability doesn't make sense unless it's a composite, nullability can apply to primitives too
+;; (although not in Java, so maybe we don't allow null primitives so that we don't have to worry about boxing?)
+
+(: (foo (? Int)) Int)
+
+(def (foo n)
+  (if (nil? n)
+    ))
+
+;; We'd like to extend this to presence in a map, say
+
+;; Kotlin also has 'flow-sensitive typing' (also called 'smart casts')
+;; if the compiler knows an expression can't be reached without a variable being (e.g.) not null, it can treat it as not null at that point
+
+;;;; Mutability: just use refs
+
+(: :foo (Mut Int))
+
+;;;; Coroutines: TODO
+
+;;;; Interop: TODO
+
+;;;; Destructuring: TODO
