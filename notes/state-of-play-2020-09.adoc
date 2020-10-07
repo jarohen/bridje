@@ -57,11 +57,11 @@ We would then _only_ need typeclass polymorphism?
 NOTE: recent paper saying that any _unhandled_ effects are handled by the lexical environment - good combination of lexical and dynamic
 
 [quote]
-****
+====
 Algebraic effects can be seen to be one-shot delimited continuations
 
 Algebraic effects are to delimited continuations what while is to goto
-****
+====
 
 == Sequences/Iterators/Generators
 
@@ -111,50 +111,46 @@ Think it's fairly safe to say I'm going with Streams in _some_ way - implementat
 Previously I've said that we should only eval at the granularity of the namespace - this is a little counter to LISP in general
 I like namespace granularity, because it means we can completely re-compile and statically link
 
-== Mutability
+Ok, so why do we look for form-at-a-time?
+- only the form I'm currently working on has to compile
+-
 
-currently just considering adding it to variants, but no reason records shouldn't be mutable either...
-if one key's mutable, the record might as well be mutable - likewise variant
-don't think we need to specify what's mutable and what's not in destructuring - the presence of a `set!` should be sufficient
-not sure we can deal with mutability at a nested level - how're you going to keep track of that?
-
-so let's say we make it mutable from the very beginning, when the object's created - once it's created immutable, it can't be made mutable
-
-nested mutability:
-- haskell: doesn't allow it (but, then again, it doesn't allow nested types to vary?)
-- clojure: yep, caveat emptor.
-  - uses explicit reference types - you know if you're dealing with something mutable
-- java/kotlin/etc: yep, defined by the class author
-- rust: yep, so long as you hold a mutable reference
-
-Bridje usually says that we trust the developers, but let them know what's happening
-- we should trust that, if they mutate something, they mean to/need to
-- but let's see if we can let them know
-- we try to let types etc be the domain of the user, not the author
-
-what does mutability do?
-
-if an object is mutable, every container that it's put in is also mutable
-Rust deals with this with ownership - it's not the object that's mutable, it's the lvar
-
-Granularity - if we deal with this through the effect system, we just say 'this function mutates _something_'
-
-Two use cases, which may have different solutions:
-* essential state - part of the use-case
-  references are probably ok here - if you pass a data structure with a reference in to another function, expect it to get mutated (or pass the deref'd value)
-* incidental state - for performance
-  we could dress this up as 'unsafe' - don't use it unless you're in the 3%
-
-What am I looking to prevent/notify here?
-* I pass a value to a function - when the function returns, the value's been mutated
+Graal constraints
+- context
+- debugger
+- statically linking
 
 options:
-- we could say that everything's mutable, but don't (or document it) - trust the developer
-- we could split out a separate reference type, which behaves like Rust
-  but that means adding in a whole lifetime/ownership concept for part of the language.
+- only allow namespace compilation
+- can't change type without re-compiling the namespace?
+- just allow form-at-a-time dammit
+- we can always go for built-in reset behaviour, like c.t.n
+- what about form-at-a-time within the namespace - if you try to eval something else somewhere else,
+- how about a split-commit type thing? immutable namespaces until you 'commit' a whole namespace
+  - git is confusing enough as it is (for a lot of devs) without making your dev environment git-like as well
+
+ok, so how do _I_ develop?
+
+unsaved until you compile a namespace?
+evaluating single forms creates a scratch-like namespace, which depends on the current namespace but doesn't alter it
+available:
+- sync all (finds all changed namespaces, eval's in dependency order, tries to recompile downstream in dependency order)
+- sync this namespace
+  - syncing a namespace should sync any upstream namespaces
+  - kills scratch
+  - invalidates all namespaces downstream
+
+if I switch between namespaces?
+- each namespace has its own scratch area
+
+== Mutability
+
+Using explicit `Mut` types.
 
 == Nullability
 
 Nullability is similar to mutability but not the same.
 Mutability doesn't apply to primitives
 Nullability à la Kotlin looks like the way forward - including a 'maybe get' keyword
+
+Using `case` so that we don't have to deal with `smart casting` - macros ftw :D

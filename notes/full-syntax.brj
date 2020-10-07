@@ -118,7 +118,15 @@ true, false
              (k "override"))}
   ...)
 
-;;;; Nullability: TODO
+;;;; Null:
+
+(: (foo (? Int))
+   (? Int))
+
+(def (foo i)
+  (if-some i
+    (-> i (keep-when even?))
+    0))
 
 ;; Mutability and nullability have different applications, although likely similar implementations in terms of sub-typing
 
@@ -128,13 +136,24 @@ true, false
 (: (foo (? Int)) Int)
 
 (def (foo n)
-  (if (nil? n)
-    ))
+  )
 
-;; We'd like to extend this to presence in a map, say
+;; what'd be really good is if we could treat null efficiently, but it looked just like a variant
+;; maybe it has to be a special value, because we have to guarantee that it's not accidentally present in an `(:Ok nil)`
+;; if `case` can handle nil, does that mean smart casting's either handled, or we don't need it?
 
-;; Kotlin also has 'flow-sensitive typing' (also called 'smart casts')
-;; if the compiler knows an expression can't be reached without a variable being (e.g.) not null, it can treat it as not null at that point
+(: (foo (? Int)) Int)
+
+(def (foo n)
+  (case (:?maybe-k m)
+    nil 0
+    v v))
+
+(when-nn n
+  )
+
+(when-nil n
+  )
 
 ;;;; Mutability: just use refs
 
