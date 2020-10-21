@@ -38,19 +38,18 @@ true, false
 
 ;;;; Record keys
 
-;; TODO qualified/unqualified?
-;; TODO to allow unqualified keys at all?
 (: :age Int)
 
-{:age 10, :_unq "hello"}
+;; unqualified keys with `::` (opposite to Clojure)
+{:age 10, ::unq "hello"}
 
 ;;;; Polymorphic record keys
 
-(: [a] ::anything #{a})
+(: [a] :anything #{a})
 
 ;;;; Record types
-(: (foo {::name ::age}) Str)
-(: (foo {::name ::age (& r)}) {(* r)})
+(: (foo {:name :age}) Str)
+(: (foo {:name :age (& r)}) {(& r)})
 
 ;;;; Variants
 
@@ -73,20 +72,12 @@ true, false
 
 ;;;; Methods
 
-;; open questions:
-;; TODO `.` when it's defined?
-;; TODO just methods? what about multi-param type classes, fun-deps, etc?
-
-;; options:
-;; - single vs multi-parameter type classes
-;; - if single, we can mark it with a `.` and assume the first parameter is the determinant
-
 (: [a] .m0 a)
 (: [a] (.m+ a a) a)
 (: [a] .m1 a)
 (: [a] (.m* a a) a)
 
-(def [(* Int)] .m0 0)
+(def [Int] .m0 0)
 (def [Int] (.m+ l r)
   (+ l r))
 
@@ -101,56 +92,68 @@ true, false
 (def [(:Mapper a b) a b] (.xform (:Mapper f) el)
   [(f el)])
 
-()
-
 ;;;; Effects
 
-(: (foo) (! String))
-(def (foo) "default")
+(: [o] (.log o Str) Unit)
+
+;; definition of the default effect
+(def [!] (log _ s)
+  )
+
+(: #{(.log !)} (log-my-thing Str) Unit)
+
+(def (log-my-thing s)
+  (.log ! s))
+
+(: :MyLogger)
+
+(:.log :MyLogger)
+
+(def (.log :MyLogger)
+  )
 
 ;; TODO first-class handlers?
-(with-fx #{(def (foo)
-             "override")}
+;; we need to specify the method that we're implementing, and the implementation
+;; implementation could be explicit, or by deferring to an object that already has the implementation
+
+;; whatever we override, we're going to need to do it with _instances_ of the type
+;; edge cases.
+;; for effects, we know it's one object that's going to be passed in - does that mean we can't then make effects of methods that accept that type more than once?
+;; what we're implicitly passing through is one of the parameters to the effect, implying that all the other parameters must be passed by the caller
+;; so that does pretty much imply that the parameter has to be the whole of the type, and that the type can't exist elsewhere in the signature
+;; and possibly that there can't be any other type parameters?
+;; so it really is a special case of typeclasses (which is fine)
+;; at which point, specifying the object itself is sufficient to determine the implementation, which opens up the syntax somewhat
+
+(with-fx {.log :MyLogger
+          .log (fn [this s]
+                 )}
   ...)
 
-;; later, maybe
-(with-fx #{(def (foo k)
-             (k "override"))}
-  ...)
+(with-fx [(def [!] (log ! s)
+            )
+          (def [Int] m0 0)]
+  )
 
 ;;;; Null:
 
-(: (foo (? Int))
-   (? Int))
-
-(def (foo i)
-  (if-some i
-    (-> i (keep-when even?))
-    0))
-
-;; Mutability and nullability have different applications, although likely similar implementations in terms of sub-typing
-
-;; Mutability doesn't make sense unless it's a composite, nullability can apply to primitives too
-;; (although not in Java, so maybe we don't allow null primitives so that we don't have to worry about boxing?)
-
-(: (foo (? Int)) Int)
-
-(def (foo n)
-  )
-
-;; what'd be really good is if we could treat null efficiently, but it looked just like a variant
-;; maybe it has to be a special value, because we have to guarantee that it's not accidentally present in an `(:Ok nil)`
-;; if `case` can handle nil, does that mean smart casting's either handled, or we don't need it?
-
-(: (foo (? Int)) Int)
+(: (foo (Maybe Int))
+   (Maybe Int))
 
 (def (foo n)
   (case (:?maybe-k m)
     nil 0
     v v))
 
+(def (foo i)
+  (if-nn i
+    (-> i (keep-when even?))
+    0))
+
 (when-nn n
   )
+
+(nn-> ...)
 
 (when-nil n
   )
@@ -159,8 +162,39 @@ true, false
 
 (: :foo (Mut Int))
 
-;;;; Coroutines: TODO
+;;;; Coroutines
 
-;;;; Interop: TODO
+;; (not actually `with-suspend`, just `suspend`, but indentation)
+
+(: (foo Int) (Suspend Int))
+
+(: (suspend* (Fn r Unit) (Suspend r)))
+
+(def (foo x)
+  (with-suspend [k]
+    (k 5)))
+
+(with-async
+  )
+
+;;;; Interop:
+
+;; JS - how do we access polyglot from Bridje?
+;; polyglot bindings are deliberately treated differently to host
+
+(ns foo
+  {:java {LL (java.util.LinkedList
+              (: ))}
+   :poly {js }
+   :import {LL (java java.util.LinkedList
+                     (: (new ) (LL e))
+                     (: (.add LL e)))
+            foo com.foo
+            js (poly "js"
+                     (: bar Int)
+                     (def bar "42")
+                     (: ))}})
+
+(LL/new ...)
 
 ;;;; Destructuring: TODO

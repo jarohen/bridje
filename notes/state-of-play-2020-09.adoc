@@ -54,6 +54,10 @@ We would then _only_ need typeclass polymorphism?
 
 == Coroutines/Effects
 
+http://www.cse.chalmers.se/~rjmh/tfp/proceedings/TFP_2020_paper_10.pdf[One-shot Algebraic Effects as Coroutines]
+https://legacy.cs.indiana.edu/~dyb/pubs/stack.pdf[Representing Control in the Presence of First-Class Continuations]
+http://people.irisa.fr/David.Cachera/Enseignement/ASM/mari.pdf[Representing Control in the Presence of First-Class Continuations] (slides)
+
 NOTE: recent paper saying that any _unhandled_ effects are handled by the lexical environment - good combination of lexical and dynamic
 
 [quote]
@@ -62,6 +66,21 @@ Algebraic effects can be seen to be one-shot delimited continuations
 
 Algebraic effects are to delimited continuations what while is to goto
 ====
+
+Algebraic effects = free monads?
+you could express algebraic effects as data, by having the effect data containing the parameters and the continuation
+then, writing an interpreter for the effect data structure is the same as writing a handler for the effect
+
+how much do we need in the core of the language?
+Kotlin only really has the means of creating coroutines, contexts and interceptors - everything else is (essentially) in the stdlib
+
+we need to consider how it fits into the typesystem:
+* context seems quite like the effect handler - applies lexically down to the suspend continuation call
+  * contexts have an interceptor, but apart from that, they seem to have whatever users want to put in them
+* let's say 'suspend' is an effect
+
+
+https://core.ac.uk/download/pdf/80795174.pdf[Monad Transformers and Modular Algebraic Effects:What Binds Them Together]
 
 == Sequences/Iterators/Generators
 
@@ -113,7 +132,6 @@ I like namespace granularity, because it means we can completely re-compile and 
 
 Ok, so why do we look for form-at-a-time?
 - only the form I'm currently working on has to compile
--
 
 Graal constraints
 - context
@@ -142,15 +160,3 @@ available:
 
 if I switch between namespaces?
 - each namespace has its own scratch area
-
-== Mutability
-
-Using explicit `Mut` types.
-
-== Nullability
-
-Nullability is similar to mutability but not the same.
-Mutability doesn't apply to primitives
-Nullability à la Kotlin looks like the way forward - including a 'maybe get' keyword
-
-Using `case` so that we don't have to deal with `smart casting` - macros ftw :D
