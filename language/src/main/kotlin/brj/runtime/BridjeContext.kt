@@ -91,6 +91,6 @@ class BridjeContext(internal val lang: BridjeLanguage, internal val truffleEnv: 
     }
 
     @TruffleBoundary
-    fun poly(lang: String, code: String) =
+    fun poly(lang: String, code: String): Any =
         truffleEnv.parsePublic(Source.newBuilder(lang, code, "<brj-inline>").build()).call()
 }

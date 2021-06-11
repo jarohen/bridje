@@ -10,7 +10,7 @@ import com.oracle.truffle.api.library.ExportLibrary
 import com.oracle.truffle.api.library.ExportMessage
 
 @ExportLibrary(InteropLibrary::class)
-class BridjeVector(val els: Array<Any?>) : TruffleObject {
+class BridjeVector(val els: Array<Any>) : TruffleObject {
     @ExportMessage
     fun hasArrayElements() = true
 
@@ -41,7 +41,7 @@ class BridjeVector(val els: Array<Any?>) : TruffleObject {
                 return when (member) {
                     "conj" -> {
                         if (args.size != 1) throw ArityException.create(1, args.size)
-                        BridjeVector(vec.els + args[0])
+                        BridjeVector(vec.els + args[0] as Any)
                     }
                     else -> throw UnsupportedMessageException.create()
                 }

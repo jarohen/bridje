@@ -33,9 +33,7 @@ open class BridjeFunction(val callTarget: CallTarget) : TruffleObject {
             fun doExecute(
                 fn: BridjeFunction,
                 args: Array<Any>,
-                @Cached("fn") cachedFn: BridjeFunction,
-                @Cached("cachedFn.getCallTarget()", allowUncached = true) callTarget: CallTarget,
-                @Cached("create(callTarget)", allowUncached = true) callNode: DirectCallNode
+                @Cached("create(fn.getCallTarget())", allowUncached = true) callNode: DirectCallNode
             ): Any {
                 val passedArgs = arrayOfNulls<Any>(args.size + 1)
                 passedArgs[0] = FxMap(FxMap.DEFAULT_SHAPE)
@@ -44,7 +42,6 @@ open class BridjeFunction(val callTarget: CallTarget) : TruffleObject {
                 }
                 return callNode.call(*passedArgs)
             }
-
         }
     }
 }

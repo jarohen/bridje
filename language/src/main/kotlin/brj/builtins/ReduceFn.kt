@@ -1,35 +1,52 @@
 package brj.builtins
 
-import com.oracle.truffle.api.interop.ArityException
+import brj.BridjeLanguage
+import brj.runtime.BridjeFunction
+import brj.runtime.FxMap
+import com.oracle.truffle.api.dsl.Cached
+import com.oracle.truffle.api.dsl.Specialization
 import com.oracle.truffle.api.interop.InteropLibrary
-import com.oracle.truffle.api.interop.TruffleObject
-import com.oracle.truffle.api.library.ExportLibrary
-import com.oracle.truffle.api.library.ExportMessage
+import com.oracle.truffle.api.nodes.DirectCallNode
 import com.oracle.truffle.api.nodes.UnexpectedResultException
 
-@ExportLibrary(InteropLibrary::class)
-object ReduceFn : TruffleObject {
-    private val interop = InteropLibrary.getUncached()
+@BuiltIn("reduce")
+abstract class ReduceFn(lang: BridjeLanguage) : BuiltInFn(lang) {
+    @field:Child
+    private var fLib = InteropLibrary.getFactory().createDispatched(3)
 
-    @get:ExportMessage
-    val isExecutable = true
+    @field:Child
+    private var collLib = InteropLibrary.getFactory().createDispatched(3)
 
-    @ExportMessage
-    fun execute(args: Array<*>): Any? {
-        if (args.size != 3) throw ArityException.create(3, args.size)
+    @field:Child
+    private var iteratorLib = InteropLibrary.getFactory().createDispatched(3)
 
-        val (f, init, coll) = args
-        if (!interop.isExecutable(f)) throw UnexpectedResultException(f)
-        if (!interop.hasIterator(coll)) throw UnexpectedResultException(coll)
+    @Specialization
+    fun doReduce(
+        fx: FxMap, fn: BridjeFunction, init: Any, coll: Any,
+        @Cached("create(fn.getCallTarget())") callNode: DirectCallNode
+    ): Any {
+        if (!collLib.hasIterator(coll)) throw UnexpectedResultException(coll)
 
-        val fs = InteropLibrary.getUncached(f)
-
-        val iterator = interop.getIterator(coll)
-        val iterators = InteropLibrary.getUncached(iterator)
+        val iterator = collLib.getIterator(coll)
         var res = init
 
-        while (iterators.hasIteratorNextElement(iterator)) {
-            res = fs.execute(f, res, iterators.getIteratorNextElement(iterator))
+        while (iteratorLib.hasIteratorNextElement(iterator)) {
+            res = callNode.call(fx, res, iteratorLib.getIteratorNextElement(iterator))
+        }
+
+        return res
+    }
+
+    @Specialization
+    fun doReduce(fx: FxMap, f: Any, init: Any, coll: Any): Any {
+        if (!fLib.isExecutable(f)) throw UnexpectedResultException(f)
+        if (!collLib.hasIterator(coll)) throw UnexpectedResultException(coll)
+
+        val iterator = collLib.getIterator(coll)
+        var res = init
+
+        while (iteratorLib.hasIteratorNextElement(iterator)) {
+            res = fLib.execute(f, res, iteratorLib.getIteratorNextElement(iterator))
         }
 
         return res

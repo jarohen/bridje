@@ -10,7 +10,7 @@ import com.oracle.truffle.api.library.ExportLibrary
 import com.oracle.truffle.api.library.ExportMessage
 
 @ExportLibrary(InteropLibrary::class)
-class BridjeSet(val els: Array<Any?>) : TruffleObject {
+class BridjeSet(val els: Array<Any>) : TruffleObject {
     @ExportMessage
     fun hasArrayElements() = true
 
@@ -37,7 +37,7 @@ class BridjeSet(val els: Array<Any?>) : TruffleObject {
         companion object {
             @Specialization
             @JvmStatic
-            fun doExecute(set: BridjeSet, member: String, args: Array<*>): Any {
+            fun doExecute(set: BridjeSet, member: String, args: Array<Any>): Any {
                 return when (member) {
                     "conj" -> {
                         if (args.size != 1) throw ArityException.create(1, args.size)

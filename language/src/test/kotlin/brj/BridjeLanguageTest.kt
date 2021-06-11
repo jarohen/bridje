@@ -110,8 +110,8 @@ class BridjeLanguageTest {
     }
 
     @Test
-    fun `test builtin`() {
-        eval("""(println0 "hello world!")""")
+    fun `test defx builtin`() {
+        eval("""(println! "hello world!")""")
         assertEquals("hello world!\n", os.toString(StandardCharsets.UTF_8))
     }
 
@@ -127,15 +127,6 @@ class BridjeLanguageTest {
         val afterMs = System.currentTimeMillis()
 
         assertTrue(duringMs in beforeMs..afterMs)
-    }
-
-    @Test
-    fun `test defx`() {
-        eval("(defx (println! Str) Str)")
-        eval("(def println! println0)")
-        eval("""(println! "hello world!")""")
-
-        assertEquals("hello world!\n", os.toString(StandardCharsets.UTF_8))
     }
 
     @Test

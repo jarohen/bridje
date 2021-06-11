@@ -15,38 +15,38 @@ internal class ValueExprEmitter(
         ExecuteArrayNode(lang, exprs.map { emitValueExpr(it) }.toTypedArray())
 
     fun emitValueExpr(expr: ValueExpr): ExprNode = when (expr) {
-        is NilExpr -> ConstantNodeGen.create(lang, Nil, expr.loc)
-        is IntExpr -> IntNodeGen.create(lang, expr.int, expr.loc)
-        is BoolExpr -> BoolNodeGen.create(lang, expr.bool, expr.loc)
-        is StringExpr -> ConstantNodeGen.create(lang, expr.string, expr.loc)
-        is VectorExpr -> VectorNodeGen.create(lang, arrayNode(expr.exprs), expr.loc)
-        is SetExpr -> SetNodeGen.create(lang, arrayNode(expr.exprs), expr.loc)
+        is NilExpr -> ConstantNode(lang, expr.loc, Nil)
+        is IntExpr -> IntNodeGen.create(lang, expr.loc, expr.int)
+        is BoolExpr -> BoolNodeGen.create(lang, expr.loc, expr.bool)
+        is StringExpr -> ConstantNode(lang, expr.loc, expr.string)
+        is VectorExpr -> VectorNodeGen.create(lang, expr.loc, arrayNode(expr.exprs))
+        is SetExpr -> SetNodeGen.create(lang, expr.loc, arrayNode(expr.exprs))
         is RecordExpr -> RecordNodeGen.create(
             lang,
+            expr.loc,
             expr.entries
                 .map { RecordNodeGen.PutMemberNodeGen.create(it.key.toString(), emitValueExpr(it.value)) }
                 .toTypedArray(),
-            expr.loc
         )
 
-        is KeywordExpr -> KeywordNode(lang, expr.key)
+        is KeywordExpr -> KeywordNode(lang, expr.loc, expr.key)
 
         is IfExpr -> IfNode(
             lang,
+            expr.loc,
             emitValueExpr(expr.predExpr),
             emitValueExpr(expr.thenExpr),
-            emitValueExpr(expr.elseExpr),
-            expr.loc
+            emitValueExpr(expr.elseExpr)
         )
-        is DoExpr -> DoNodeGen.create(lang, arrayNode(expr.exprs), emitValueExpr(expr.expr), expr.loc)
+        is DoExpr -> DoNodeGen.create(lang, expr.loc, arrayNode(expr.exprs), emitValueExpr(expr.expr))
 
         is LetExpr -> LetNode(
             lang,
+            expr.loc,
             expr.bindings.map {
                 WriteLocalNodeGen.create(lang, emitValueExpr(it.expr), frameDescriptor.findOrAddFrameSlot(it.binding))
             }.toTypedArray(),
-            emitValueExpr(expr.expr),
-            expr.loc
+            emitValueExpr(expr.expr)
         )
 
         is FnExpr -> {
@@ -61,31 +61,32 @@ internal class ValueExprEmitter(
                 ValueExprEmitter(lang, frameDescriptor).emitValueExpr(expr.expr)
             )
 
-            FnNodeGen.create(lang, BridjeFunction(Truffle.getRuntime().createCallTarget(fnRootNode)), expr.loc)
+            ConstantNode(lang, expr.loc, BridjeFunction(Truffle.getRuntime().createCallTarget(fnRootNode)))
         }
 
         is CallExpr -> CallNodeGen.create(
             lang,
+            expr.loc,
             emitValueExpr(expr.fn),
             CallArgsNodeGen.create(
                 emitValueExpr(expr.fxExpr),
                 expr.args.map { emitValueExpr(it) }.toTypedArray()
-            ),
-            expr.loc
+            )
         )
 
-        is LocalVarExpr -> LocalVarNodeGen.create(lang, frameDescriptor.findOrAddFrameSlot(expr.localVar), expr.loc)
-        is GlobalVarExpr -> GlobalVarNodeGen.create(lang, expr.globalVar.bridjeVar, expr.loc)
-        is TruffleObjectExpr -> ConstantNodeGen.create(lang, expr.clazz, expr.loc)
+        is LocalVarExpr -> LocalVarNodeGen.create(lang, expr.loc, frameDescriptor.findOrAddFrameSlot(expr.localVar))
+        is GlobalVarExpr -> GlobalVarNodeGen.create(lang, expr.loc, expr.globalVar.bridjeVar)
+        is TruffleObjectExpr -> ConstantNode(lang, expr.loc, expr.clazz)
 
         is WithFxExpr -> {
             WithFxNode(
                 lang,
+                expr.loc,
                 WriteLocalNodeGen.create(
                     lang,
                     WithFxNode.NewFxNode(
-                        lang,
-                        LocalVarNodeGen.create(lang, frameDescriptor.findOrAddFrameSlot(expr.oldFx), null),
+                        lang, null,
+                        LocalVarNodeGen.create(lang, null, frameDescriptor.findOrAddFrameSlot(expr.oldFx)),
                         expr.bindings.map { WithFxNode.WithFxBindingNode(it.defxVar.sym, emitValueExpr(it.expr)) }
                             .toTypedArray()
                     ),
@@ -97,6 +98,7 @@ internal class ValueExprEmitter(
 
         is LoopExpr -> LoopNode(
             lang,
+            expr.loc,
             expr.bindings.map {
                 WriteLocalNodeGen.create(
                     lang,
@@ -104,12 +106,12 @@ internal class ValueExprEmitter(
                     frameDescriptor.findOrAddFrameSlot(it.binding)
                 )
             }.toTypedArray(),
-            emitValueExpr(expr.expr),
-            expr.loc
+            emitValueExpr(expr.expr)
         )
 
         is RecurExpr -> RecurNode(
             lang,
+            expr.loc,
             expr.exprs.map {
                 WriteLocalNodeGen.create(
                     lang,
@@ -128,22 +130,22 @@ internal class ValueExprEmitter(
 
             val defaultClauseNode =
                 if (expr.defaultExpr != null) emitValueExpr(expr.defaultExpr)
-                else ConstantNodeGen.create(lang, Nil, null)
+                else ConstantNode(lang, null, Nil)
 
             CaseNode(
-                lang, emitValueExpr(expr.expr),
+                lang, expr.loc,
+                emitValueExpr(expr.expr),
                 (listOfNotNull(nilClauseNode) + clauseNodes).toTypedArray(),
-                defaultClauseNode,
-                expr.loc
+                defaultClauseNode
             )
         }
 
         is NewExpr -> {
             NewNodeGen.create(
                 lang,
+                expr.loc,
                 emitValueExpr(expr.metaObj),
-                arrayNode(expr.params),
-                expr.loc
+                arrayNode(expr.params)
             )
         }
     }

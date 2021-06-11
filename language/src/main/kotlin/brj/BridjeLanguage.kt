@@ -3,10 +3,8 @@ package brj
 import brj.builtins.*
 import brj.nodes.EvalRootNodeGen
 import brj.nodes.ExprNode
+import brj.nodes.ReadArgNode
 import brj.nodes.ValueExprRootNode
-import brj.nodes.builtins.PolyNodeGen
-import brj.nodes.builtins.PrStrNodeGen
-import brj.nodes.builtins.PrintlnNodeGen
 import brj.runtime.BridjeContext
 import brj.runtime.BridjeFunction
 import brj.runtime.BridjeView
@@ -14,9 +12,9 @@ import brj.runtime.Symbol.Companion.symbol
 import com.oracle.truffle.api.CallTarget
 import com.oracle.truffle.api.Truffle
 import com.oracle.truffle.api.TruffleLanguage
+import com.oracle.truffle.api.dsl.NodeFactory
 import com.oracle.truffle.api.frame.FrameDescriptor
 import com.oracle.truffle.api.interop.TruffleObject
-import java.io.PrintWriter
 
 @TruffleLanguage.Registration(
     id = "brj",
@@ -36,44 +34,45 @@ class BridjeLanguage : TruffleLanguage<BridjeContext>() {
         )
     )
 
-    override fun initializeContext(ctx: BridjeContext) {
-        ctx.def(
-            symbol("println0"), Typing(FnType(listOf(StringType), StringType)),
-            builtInFunction(
-                PrintlnNodeGen.create(this, PrintWriter(ctx.truffleEnv.out()))
-            )
-        )
+    private fun installBuiltIns(ctx: BridjeContext) {
+        fun installBuiltIn(
+            factory: NodeFactory<out BuiltInFn>,
+            typing: Typing = Typing(TypeVar()),
+            passFx: Boolean = false
+        ) {
+            val ann = factory.nodeClass.getAnnotation(BuiltIn::class.java)
+            val argNodes = Array(factory.executionSignature.size) { ReadArgNode(this, it + (if (passFx) 0 else 1)) }
 
-        val a = TypeVar("a")
-        val b = TypeVar("b")
-        ctx.def(symbol("reduce"), Typing(FnType(listOf(FnType(listOf(b, a), b), b, VectorType(a)), b)), ReduceFn)
+            ctx.def(symbol(ann.name), typing, builtInFunction(factory.createNode(this, argNodes)))
+        }
 
-        ctx.def(symbol("+"), Typing(FnType(listOf(IntType, IntType), IntType)), PlusFn)
-        ctx.def(symbol("-"), Typing(FnType(listOf(IntType, IntType), IntType)), MinusFn)
-        ctx.def(symbol("*"), Typing(FnType(listOf(IntType, IntType), IntType)), MultiplyFn)
-        ctx.def(symbol("/"), Typing(FnType(listOf(IntType, IntType), IntType)), DivideFn)
+        installBuiltIn(ReduceFnFactory.getInstance(), passFx = true)
 
-        ctx.def(symbol("=="), Typing(FnType(listOf(IntType, IntType), BoolType)), EqualsFn)
-        ctx.def(symbol("<"), Typing(FnType(listOf(IntType, IntType), BoolType)), LessThanFn)
-        ctx.def(symbol("<="), Typing(FnType(listOf(IntType, IntType), BoolType)), LessThanEqualsFn)
-        ctx.def(symbol(">="), Typing(FnType(listOf(IntType, IntType), BoolType)), GreaterThanEqualsFn)
-        ctx.def(symbol(">"), Typing(FnType(listOf(IntType, IntType), BoolType)), GreaterThanFn)
+        installBuiltIn(PlusFnFactory.getInstance())
+        installBuiltIn(MinusFnFactory.getInstance())
+        installBuiltIn(MultiplyFnFactory.getInstance())
+        installBuiltIn(DivideFnFactory.getInstance())
+        installBuiltIn(IncFnFactory.getInstance())
+        installBuiltIn(DecFnFactory.getInstance())
 
-        ctx.def(symbol("zero?"), Typing(FnType(listOf(IntType), BoolType)), IsZeroFn)
-        ctx.def(symbol("dec"), Typing(FnType(listOf(IntType), IntType)), DecFn)
+        installBuiltIn(EqualsFnFactory.getInstance())
+        installBuiltIn(GreaterThanEqualsFnFactory.getInstance())
+        installBuiltIn(GreaterThanFnFactory.getInstance())
+        installBuiltIn(LessThanEqualsFnFactory.getInstance())
+        installBuiltIn(LessThanFnFactory.getInstance())
+        installBuiltIn(IsZeroFnFactory.getInstance())
 
         ctx.defx(symbol("now!"), Typing(TypeVar()))
-        ctx.def(symbol("now!"), Typing(TypeVar()), builtInFunction(NowNode(this)))
+        installBuiltIn(NowNodeFactory.getInstance())
+        installBuiltIn(PolyNodeFactory.getInstance())
+        installBuiltIn(PrStrNodeFactory.getInstance())
 
-        ctx.def(
-            symbol("poly"), Typing(FnType(listOf(StringType), TypeVar())),
-            builtInFunction(PolyNodeGen.create(this))
-        )
+        ctx.defx(symbol("println!"), Typing(TypeVar()))
+        installBuiltIn(PrintlnNodeFactory.getInstance())
+    }
 
-        ctx.def(
-            symbol("pr-str"), Typing(FnType(listOf(TypeVar()), StringType)),
-            builtInFunction(PrStrNodeGen.create(this))
-        )
+    override fun initializeContext(ctx: BridjeContext) {
+        installBuiltIns(ctx)
     }
 
     override fun parse(request: ParsingRequest): CallTarget {

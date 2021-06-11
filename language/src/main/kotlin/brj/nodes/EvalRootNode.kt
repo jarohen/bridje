@@ -33,6 +33,10 @@ internal abstract class EvalRootNode(lang: BridjeLanguage, private val forms: Li
                         val frameDescriptor = FrameDescriptor()
                         ValueExprRootNodeGen.create(
                             lang, frameDescriptor,
+                            WriteLocalNodeGen.create(
+                                lang, ReadArgNode(lang, 0),
+                                frameDescriptor.findOrAddFrameSlot(DEFAULT_FX_LOCAL)
+                            ),
                             ValueExprEmitter(lang, frameDescriptor).emitValueExpr(expr)
                         )
                     }
@@ -45,14 +49,14 @@ internal abstract class EvalRootNode(lang: BridjeLanguage, private val forms: Li
                         val frameDescriptor = FrameDescriptor()
                         DefRootNodeGen.create(
                             lang, frameDescriptor,
+                            expr.sym, Typing(TypeVar()), /*valueExprTyping*/ expr.loc,
                             ValueExprEmitter(lang, frameDescriptor).emitValueExpr(expr.expr),
-                            expr.sym, Typing(TypeVar()) /*valueExprTyping*/, expr.loc
                         )
                     }
 
                     is DefxExpr -> DefxRootNodeGen.create(lang, expr.sym, expr.typing, expr.loc)
 
-                    is ImportExpr -> ImportRootNodeGen.create(lang, expr.syms.toTypedArray(), expr.loc)
+                    is ImportExpr -> ImportRootNodeGen.create(lang, expr.loc, expr.syms.toTypedArray())
                 }
             }
 
