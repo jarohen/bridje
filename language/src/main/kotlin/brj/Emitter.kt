@@ -25,7 +25,7 @@ internal class ValueExprEmitter(
             lang,
             expr.loc,
             expr.entries
-                .map { RecordNodeGen.PutMemberNodeGen.create(it.key.toString(), emitValueExpr(it.value)) }
+                .map { RecordNodeGen.PutMemberNodeGen.create(it.key.toString(), null, emitValueExpr(it.value)) }
                 .toTypedArray(),
         )
 
@@ -69,8 +69,9 @@ internal class ValueExprEmitter(
             expr.loc,
             emitValueExpr(expr.fn),
             CallArgsNodeGen.create(
+                null,
                 emitValueExpr(expr.fxExpr),
-                expr.args.map { emitValueExpr(it) }.toTypedArray()
+                ExecuteArrayNode(lang, expr.args.map { emitValueExpr(it) }.toTypedArray())
             )
         )
 

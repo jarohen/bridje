@@ -1,7 +1,6 @@
 package brj.nodes
 
 import brj.BridjeLanguage
-import brj.nodes.ExprNode
 import brj.runtime.BridjeFunction
 import com.oracle.truffle.api.dsl.Cached
 import com.oracle.truffle.api.dsl.NodeChild
@@ -23,32 +22,27 @@ import com.oracle.truffle.api.source.SourceSection
 )
 abstract class CallNode(lang: BridjeLanguage, loc: SourceSection?) : ExprNode(lang, loc) {
 
-    abstract class CallArgsNode(
-        @field:Child private var fxLocalArgNode: ExprNode,
-        @field:Children private val argNodes: Array<ExprNode>
-    ) : Node() {
+    @NodeChildren(
+        NodeChild(value = "fn", type = ExprNode::class),
+        NodeChild(value = "fxLocal", type = ExprNode::class),
+        NodeChild(value = "args", type = ExecuteArrayNode::class)
+    )
+    abstract class CallArgsNode : Node() {
         @Specialization
         @ExplodeLoop
-        fun doExecute(frame: VirtualFrame?, fn: BridjeFunction?): Array<Any?> {
-            val args = arrayOfNulls<Any>(argNodes.size + 1)
-            args[0] = fxLocalArgNode.execute(frame)
-            for (i in argNodes.indices) {
-                args[i + 1] = argNodes[i].execute(frame)
+        fun doExecute(fn: BridjeFunction, fxLocal: Any, args: Array<*>): Array<Any?> {
+            val passedArgs = arrayOfNulls<Any>(args.size + 1)
+            passedArgs[0] = fxLocal
+            for (i in args.indices) {
+                passedArgs[i + 1] = args[i]
             }
-            return args
+            return passedArgs
         }
 
         @Specialization
-        @ExplodeLoop
-        fun doExecute(frame: VirtualFrame?, fn: TruffleObject?): Array<Any?> {
-            val args = arrayOfNulls<Any>(argNodes.size)
-            for (i in argNodes.indices) {
-                args[i] = argNodes[i].execute(frame)
-            }
-            return args
-        }
+        fun doExecute(fn: TruffleObject, fxLocal: Any, args: Array<Any?>) = args
 
-        abstract fun execute(frame: VirtualFrame?, fn: TruffleObject?): Array<Any?>?
+        abstract fun execute(frame: VirtualFrame, fn: TruffleObject): Array<Any?>
     }
 
     @Specialization(guards = ["fn == cachedFn"])

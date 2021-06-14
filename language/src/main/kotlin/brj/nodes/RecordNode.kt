@@ -3,6 +3,8 @@ package brj.nodes
 import brj.BridjeLanguage
 import brj.runtime.BridjeRecord
 import com.oracle.truffle.api.`object`.DynamicObjectLibrary
+import com.oracle.truffle.api.dsl.NodeChild
+import com.oracle.truffle.api.dsl.NodeChildren
 import com.oracle.truffle.api.dsl.Specialization
 import com.oracle.truffle.api.frame.VirtualFrame
 import com.oracle.truffle.api.library.CachedLibrary
@@ -16,19 +18,21 @@ abstract class RecordNode(
     @field:Children private val putMemberNodes: Array<PutMemberNode>
 ) : ExprNode(lang, loc) {
 
+    @NodeChildren(
+        NodeChild(value = "obj", type = ExprNode::class),
+        NodeChild(value = "value", type = ExprNode::class)
+    )
     abstract class PutMemberNode(
         private val key: String,
-        @Child var valueNode: ExprNode
     ) : Node() {
         abstract fun executePut(frame: VirtualFrame, obj: BridjeRecord): Any
 
         @Specialization(limit = "3")
         fun doPut(
-            frame: VirtualFrame,
             obj: BridjeRecord,
+            value: Any,
             @CachedLibrary("obj") dynObj: DynamicObjectLibrary
         ): Any {
-            val value = valueNode.execute(frame)
             dynObj.put(obj, key, value)
             return value
         }
