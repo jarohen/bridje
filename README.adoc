@@ -10,7 +10,11 @@ Its main features will include:
 - Type-safe macros.
 
 *It is currently pre-alpha, and nowhere near finished.*
-What follows below are ideas for how I imagine the language would work!
+What follows below are mostly ideas for how I envisage the language to work.
+
+NOTE:
+Bridje is currently undergoing an interop-first re-write, in an attempt to get interop with other Truffle languages up and running.
+This is next on my list to get re-enabled.
 
 Bridje has a number of built-in forms, many similar to their Clojure counterparts.
 It also has a few additions, particularly regarding the record data structures, and its effect and typeclass systems.
@@ -33,7 +37,7 @@ Function application works as in any other LISP - `(foo param1 param2)`.
 Parameters are eagerly evaluated before calling the function.
 
 'If' and 'do' expressions are unsurprising.
-// In an 'if' statement, though, because Bridje is typed, the two branches must have an equivalent type.
+In an 'if' statement, though, because Bridje is typed, the two branches must have an equivalent type.
 
 [source,clojure]
 ----
@@ -62,35 +66,25 @@ If no `loop` block is present, the recur point is assumed to be the containing f
 == Naming values, defining functions (implemented)
 
 We define both values and functions using `def`.
-// We can optionally specify the type of a value/function explicitly using `::`- it's not required, but it's checked, and useful as documentation.
+We can optionally specify the type of a value/function explicitly using `::`- it's not required, but it's checked, and useful as documentation.
 
 [source,clojure]
 ----
-(def x 4)
+  (ns my-project.my-ns) ; more on this later
 
-;; functions have their name and parameters wrapped in parens
+  (:: x Int)
+  (def x 4)
 
-(def (say-hi s)
-  (str "Hello, " s "!"))
+  ; functions have their name and parameters wrapped in parens
+
+  (:: (say-hi Str) Str)
+  (def (say-hi s)
+    (str "Hello, " s "!"))
 ----
 
-// TODO old
-// [source,clojure]
-// ----
-//   (ns my-project.my-ns) ; more on this later
-
-//   (:: x Int)
-//   (def x 4)
-
-//   ; functions have their name and parameters wrapped in parens
-
-//   (:: (say-hi Str) Str)
-//   (def (say-hi s)
-//     (str "Hello, " s "!"))
-// ----
-
-// Values are all defined within a namespace, specified at the top of the file.
-// More on this later, including how to refer to values declared in other namespaces.
+NOTE: namespaces not yet re-implemented
+Values are all defined within a namespace, specified at the top of the file.
+More on this later, including how to refer to values declared in other namespaces.
 
 == Collections (implemented)
 
@@ -126,6 +120,8 @@ They are immutable, and can be arbitrarily nested.
      :a-big-number 52N})
 ----
 
+Eventually, records will be able to be destructured, as in Clojure.
+
 // As in Clojure, we can destructure records, although the syntax is a little different.
 // In particular, in the long-hand form, the destructuring matches the structure of the record itself.
 // Here are some examples:
@@ -152,9 +148,18 @@ They are immutable, and can be arbitrarily nested.
 // ----
 
 Records can also be nested.
-// Drawing inspiration from hints in Rich Hickey's 'Maybe Not' talk, we do not specify ahead of time what keys a record type contains, only that it is a record.
-// When the record is used, the type system then decides which keys the user of the record requires at that particular site.
+Drawing inspiration from hints in Rich Hickey's 'Maybe Not' talk, we do not specify ahead of time what keys a record type contains, only that it is a record.
+When the record is used, the type system then decides which keys the user of the record requires at that particular site.
 
+[source,clojure]
+----
+  ;; the type of `say-hi` is (Fn {:name Str} Str)
+  ;; - a function from a record containing a `:name` key to a string
+  (def (say-hi user)
+    (format "Hi, %s!" (:name user)))
+----
+
+// TODO old
 // [source,clojure]
 // ----
 //   (:: :user-id Int)
@@ -195,10 +200,27 @@ Records can also be nested.
 == Variants ('union'/'sum' types) (implemented)
 
 In addition to records, with a set of keys, Bridje also allows developers to declare 'variants' - a data structure that has _one_ of a possible set of keys.
-// Variant keys are distinguished from record keys by using an initial capital letter:
+By convention, variant keys are distinguished from record keys by using an initial capital letter:
 
-TODO
+[source,clojure]
+----
+;; we construct instances of these variants using the key as a constructor (the key followed by a period):
+;; this is of type `[(+ (:Int Int) (:String Str) :Neither)]` - a vector whose elements either have an
+;; `:Int` key, a `:String` key, or the value `:Neither`
+(def ints-and-strings
+  [(:Int. 4) :Neither. (:String. "hello")])
 
+;; we can deconstruct variants using a `case` expression (destructuring if need be).
+;; in a similar vein to the `if` expression, all of the possible outputs of a
+;; case expression must have the same type.
+
+(case (first ints-and-strings)
+  (:Int an-int) (+ an-int 2)
+  (:String a-string) (count a-string)
+  :Neither 0)
+----
+
+// TODO old
 // [source,clojure]
 // ----
 //   (:: (:Int Int))
@@ -225,35 +247,35 @@ TODO
 //   (:: IntOrString (+ :Int :String :Neither))
 // ----
 
-// == Macros (implemented)
+== Macros (not yet re-implemented)
 
-// Bridje macros aim to operate as similar to Clojure's macros as possible - however, without a heterogeneous list type, we need another way of expressing and manipulating forms.
+Bridje macros aim to operate as similar to Clojure's macros as possible - however, without a heterogeneous list type, we need another way of expressing and manipulating forms.
 
-// Instead, we use variants - a macro is then a function that accepts a number of Forms, and returns a Form.
+Instead, we use variants - a macro is then a function that accepts a number of Forms, and returns a Form.
 
-// [source,clojure]
-// ----
-//   (:: (:StringForm Str))
-//   (:: (:IntForm Int))
-//   (:: (:ListForm [Form]))
-//   (:: (:VectorForm [Form]))
-//   ;; ...
+[source,clojure]
+----
+;; (:: (:StringForm Str))
+;; (:: (:IntForm Int))
+;; (:: (:ListForm [Form]))
+;; (:: (:VectorForm [Form]))
+;; ;; ...
+;;
+;; (:: Form (+ :StringForm :IntForm :ListForm :VectorForm ...))
 
-//   (:: Form (+ :StringForm :IntForm :ListForm :VectorForm ...))
+(defmacro (my-first-macro form)
+  (case form
+    (:StringForm str) (:StringForm "sneaky!")
+    form))
 
-//   (defmacro (my-first-macro form)
-//     (case form
-//       (:StringForm str) (:StringForm "sneaky!")
-//       form))
+;; fortunately, syntax-quoting/unquoting translates into Form-generating code as you'd expect
+;; so, most of the time, Bridje macros will have similar implementations.
 
-//   ;; fortunately, syntax-quoting/unquoting translates into Form-generating code as
-//   ;; you'd expect, so, most of the time, Bridje macros will have similar implementations.
-
-//   (defmacro (if-not pred then else)
-//     `(if `pred
-//        `else
-//        `then))
-// ----
+(defmacro (if-not pred then else)
+  `(if `pred
+     `else
+     `then))
+----
 
 // == Namespaces (partially implemented, reload to come)
 
@@ -301,75 +323,107 @@ TODO
 One of Bridje's main features is its effect system - a way of knowing at compile-time what side causes/side effects a function depends on.
 
 We use the example of a simple logging system, where we want to log to stdout.
-// In Bridje, we declare an effectful function by wrapping the declaration with `(! ...)`.
+In Bridje, we declare an effectful function using `defx`.
 We can then provide a default implementation, which may in turn call lower-level effects.
 
-TODO
+[source,clojure]
+----
+(defx (print! Str) Void)
+(defx (read-line!) Str)
 
-// [source,clojure]
-// ----
-//   (:: (print! Str) (! Void))
-//   (:: (read-line!) (! Str))
+(def (print! s)
+  ;; interop
+  )
 
-//   (def (print! s)
-//     ;; interop
-//     )
+(def (read-line!)
+  ;; interop
+  )
 
-//   (def (read-line!)
-//     ;; interop
-//     )
+(def (println! s)
+  (print! (str s "\n")))
 
-//   (def (println! s)
-//     (print! (str s "\n")))
+;; (:: :Debug)
+;; (:: :Info)
+;; (:: :Warn)
+;; (:: :Error)
 
+;; (:: Level (+ :Debug :Info :Warn :Error))
 
-//   (:: :Debug)
-//   (:: :Info)
-//   (:: :Warn)
-//   (:: :Error)
+(defx (log! Level Str) Void)
 
-//   (:: Level (+ :Debug :Info :Warn :Error))
+(def (log! level s)
+  (print! (format "Log [%s]: %s" (pr-str level) s)))
 
+(def (my-fn x y)
+  (log! :Debug (format "Got x: %d, y: %d" x y))
+  (+ x y))
+----
 
-//   (:: (log! Level Str) (! Void))
+Effects propagate through the call stack - in this case, the `println!` function is determined to use the `print!` effect.
+The `my-fn` function is determined to use the `log!` effect, but not `print!` (because default implementations can be overridden).
 
-//   (def (log! level s)
-//     (print! (format "Log [%s]: %s" (pr-str level) s)))
+We can provide/override implementations of effects using the `with-fx` expression.
+This defines the behaviour of the effect in the _lexical_ scope of the block.
 
-//   (def (my-fn x y)
-//     (log! :Debug (format "Got x: %d, y: %d" x y))
-//     (+ x y))
-// ----
+[source,clojure]
+----
+(with-fx [(def (print! s)
+            ...)]
 
-// Effects propagate through the call stack - in this case, the `println!` function is determined to use the `print!` effect.
-// The `my-fn` function is determined to use the `log!` effect, but not `print!` (because default implementations can be overridden).
+  (log! :Info "Hello!"))
+----
 
-// We can provide/override implementations of effects using the `with-fx` expression.
-// This defines the behaviour of the effect in the _lexical_ scope of the block.
+== Interop (implemented)
 
-// [source,clojure]
-// ----
-//   (with-fx [(def (print! s)
-//               ...)]
+Bridje can interoperate with both Java and other languages within the Truffle/GraalVM ecosystem.
 
-//     (log! :Info "Hello!"))
-// ----
+Objects from other languages become Bridje records.
 
-== Java Interop (partially implemented)
-TODO
-// We can import functions from Java as if they are Bridje functions - we just need
-// to declare their types.
+[source,clojure]
+----
+;; import a Java class as a Bridje object using `import` - this then makes them available using their class-name
+(import java.time.Instant java.time.Duration)
 
-// [source,clojure]
-// ----
-//   (ns my-ns
-//     {:aliases {RT (java java.lang.Runtime
-//                         (:: (getRuntime) RT)
-//                         (:: (freeMemory RT) Int))}})
+(Instant/NOW)
+;; => (#inst "2021-06-16T11:00:00.000Z")
 
-//   ;; we can then use those functions using the `RT` alias
-//   (RT/freeMemory (RT/getRuntime))
-// ----
+;; call methods using `.` syntax:
+
+(.plus Instant/EPOCH (Duration/ofSeconds 30))
+;; => (#inst "1970-01-01T00:00:30.000Z")
+----
+
+Evaluate code in other Truffle languages using `poly`:
+
+[source,clojure]
+----
+(poly "ruby" "[1..5]")
+;; => [1 2 3 4 5]
+
+(def py-math (poly "python" "import math; math"))
+
+(:factorial py-math) ; => <fn>
+((:factorial py-math) 5) ; => 120
+(.factorial py-math 5) ; => 120
+
+;; using the reduce built-in
+(reduce (poly "js" "(x, y) => x * y")
+        1
+        (poly "ruby" "[1..5]"))
+;; => 120
+----
+
+Bridje can also be used from other Truffle languages using their polyglot methods:
+
+[source,js]
+----
+Polyglot.eval("brj", "[1 2 3 4 5]"); // => [1, 2, 3, 4, 5]
+
+const reduce = Polyglot.eval("brj", "reduce");
+const mul = Polyglot.eval("brj", "(fn [x y] (* x y))")
+
+reduce(mul, 1, [1, 2, 3, 4, 5]); // => 120
+----
 
 == Polymorphism - TODO
 
@@ -444,7 +498,7 @@ TODO
 
 == Error handling (initial thoughts)
 
-There are two types of error in Bridje - we make a distinction between errors that the immediate caller is expected to handle, and errors that they aren't.
+There'll be two types of error in Bridje - we make a distinction between errors that the immediate caller is expected to handle, and errors that they aren't.
 
 Errors that the caller is expected to handle can be wrapped in user-defined variant types.
 If you have a function that has a success case and a number of error cases, you can declare each case as a variant key, and then eliminate the variants with a `case` expression as you would with any other variant.
