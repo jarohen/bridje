@@ -590,6 +590,8 @@ As in other languages, we want to ensure that no matter what happens, our resour
 // We can be sure that the resource is closed after the `let` block finishes,
 // regardless of whether it yields a result, an error, or throws.
 
-= LICENCE
+= LICENSE
 
-Licence tbc. For now, all rights reserved. Feel free to have a browse, though.
+Bridje is licensed under the Mozilla Public License, version 2 or (at your option) any later version.
+
+Copyright © 2021 James Henderson.
